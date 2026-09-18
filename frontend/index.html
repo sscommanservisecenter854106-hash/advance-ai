@@ -41,6 +41,21 @@
         <!-- Dynamically loaded chat sessions -->
       </div>
 
+      <div class="sidebar-user-card" id="user-profile-section" style="display: none;">
+        <div class="user-avatar" id="user-avatar-initial">U</div>
+        <div class="user-info">
+          <span class="user-email" id="current-user-email">user@nexus.ai</span>
+          <span class="user-status-text">Authenticated</span>
+        </div>
+        <button id="logout-btn" class="logout-btn" title="Sign Out">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+
       <div class="sidebar-footer">
         <button id="rag-btn" class="nav-icon-btn">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -136,11 +151,11 @@
           <div class="form-group">
             <label for="setting-provider">Active LLM Provider</label>
             <select id="setting-provider" class="form-control">
-              <option value="local">Local Intelligent Fallback (Offline, Zero-API)</option>
+              <option value="local">🤖 Nexus Self-AI Engine (100% Offline, Zero APIs, Private)</option>
+              <option value="ollama">🦙 Ollama Local LLM (Offline Llama-3 / Phi-3 / DeepSeek)</option>
               <option value="gemini">Google Gemini (Gemini 2.0 / 1.5 Flash)</option>
               <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
               <option value="groq">Groq (Llama 3.3 70B - Ultra Fast)</option>
-              <option value="ollama">Ollama (Local Private LLM)</option>
             </select>
           </div>
 
@@ -199,6 +214,52 @@
         <div class="modal-footer">
           <button id="clear-rag-btn" class="btn-secondary" style="color: var(--accent-rose); border-color: rgba(244, 63, 94, 0.3);">Clear Knowledge Base</button>
           <button class="btn-primary" onclick="document.getElementById('file-input').click()">Upload New File</button>
+        </div>
+      </div>
+    <!-- Cyber-Glass Auth Gate Modal (Required before accessing platform) -->
+    <div id="auth-overlay" class="auth-backdrop">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <div class="auth-brand-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+          </div>
+          <h2 class="auth-title">NEXUS // AI</h2>
+          <p class="auth-subtitle">Autonomous Private Intelligence Platform</p>
+        </div>
+
+        <!-- Auth Mode Tabs -->
+        <div class="auth-tabs">
+          <button id="auth-tab-login" class="auth-tab active" type="button">Sign In</button>
+          <button id="auth-tab-register" class="auth-tab" type="button">Create Account</button>
+        </div>
+
+        <!-- Auth Error Alert Banner -->
+        <div id="auth-error" class="auth-error-banner" style="display: none;"></div>
+
+        <!-- Form -->
+        <form id="auth-form" autocomplete="on">
+          <div class="form-group">
+            <label for="auth-email">Email Address</label>
+            <input type="email" id="auth-email" class="form-control" placeholder="user@example.com" required autocomplete="email">
+          </div>
+
+          <div class="form-group">
+            <label for="auth-password">Password</label>
+            <input type="password" id="auth-password" class="form-control" placeholder="••••••••" required minlength="6" autocomplete="current-password">
+          </div>
+
+          <button type="submit" id="auth-submit-btn" class="auth-submit-btn">
+            <span id="auth-submit-text">Sign In</span>
+            <div id="auth-spinner" class="spinner" style="display: none;"></div>
+          </button>
+        </form>
+
+        <div class="auth-footer-note">
+          🔒 100% Local & Private Authentication // Zero-Telemetry
         </div>
       </div>
     </div>

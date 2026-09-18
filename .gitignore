@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+data/*.db
+data/uploads/*
+!data/uploads/.gitkeep
+ai with nexus/
+nexus ai/
+.vscode/
+.idea/

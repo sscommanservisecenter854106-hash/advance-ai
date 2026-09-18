@@ -11,11 +11,14 @@ class NexusApp {
     this.isListening = false;
     this.ttsEnabled = false;
 
+    // Authentication State
+    this.authToken = localStorage.getItem('nexus_auth_token') || null;
+    this.currentUser = null;
+    this.authMode = 'login'; // 'login' or 'register'
+
     this.initElements();
-    this.initWebSocket();
+    this.initAuth();
     this.initSpeech();
-    this.loadSessions();
-    this.loadSystemStatus();
     this.bindEvents();
   }
 
@@ -46,16 +49,222 @@ class NexusApp {
     this.activeModelBadge = document.getElementById('active-model-badge');
     this.ragCountBadge = document.getElementById('rag-count-badge');
     this.toolsCountBadge = document.getElementById('tools-count-badge');
+
+    // Authentication Elements
+    this.authOverlay = document.getElementById('auth-overlay');
+    this.authForm = document.getElementById('auth-form');
+    this.authEmail = document.getElementById('auth-email');
+    this.authPassword = document.getElementById('auth-password');
+    this.authTabLogin = document.getElementById('auth-tab-login');
+    this.authTabRegister = document.getElementById('auth-tab-register');
+    this.authSubmitBtn = document.getElementById('auth-submit-btn');
+    this.authSubmitText = document.getElementById('auth-submit-text');
+    this.authSpinner = document.getElementById('auth-spinner');
+    this.authError = document.getElementById('auth-error');
+
+    // User Profile in Sidebar
+    this.userProfileSection = document.getElementById('user-profile-section');
+    this.currentUserEmail = document.getElementById('current-user-email');
+    this.userAvatarInitial = document.getElementById('user-avatar-initial');
+    this.logoutBtn = document.getElementById('logout-btn');
   }
 
+  // --- Authentication System ---
+
+  async initAuth() {
+    // Bind Tab Switching
+    if (this.authTabLogin && this.authTabRegister) {
+      this.authTabLogin.onclick = () => this.setAuthMode('login');
+      this.authTabRegister.onclick = () => this.setAuthMode('register');
+    }
+
+    // Bind Auth Form Submit
+    if (this.authForm) {
+      this.authForm.onsubmit = (e) => this.handleAuthSubmit(e);
+    }
+
+    // Bind Logout
+    if (this.logoutBtn) {
+      this.logoutBtn.onclick = () => this.logout();
+    }
+
+    // Check existing token
+    if (this.authToken) {
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${this.authToken}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          this.currentUser = data.user;
+          this.showApp();
+          return;
+        }
+      } catch (e) {
+        console.warn('Auth token verification failed', e);
+      }
+    }
+
+    // If no valid auth, lock application behind auth gate
+    this.showAuthOverlay();
+  }
+
+  setAuthMode(mode) {
+    this.authMode = mode;
+    this.hideAuthError();
+    if (mode === 'login') {
+      this.authTabLogin.classList.add('active');
+      this.authTabRegister.classList.remove('active');
+      this.authSubmitText.textContent = 'Sign In';
+      this.authPassword.autocomplete = 'current-password';
+    } else {
+      this.authTabRegister.classList.add('active');
+      this.authTabLogin.classList.remove('active');
+      this.authSubmitText.textContent = 'Create Account';
+      this.authPassword.autocomplete = 'new-password';
+    }
+  }
+
+  showAuthError(message) {
+    if (this.authError) {
+      this.authError.textContent = message;
+      this.authError.style.display = 'block';
+    }
+  }
+
+  hideAuthError() {
+    if (this.authError) {
+      this.authError.style.display = 'none';
+      this.authError.textContent = '';
+    }
+  }
+
+  async handleAuthSubmit(e) {
+    e.preventDefault();
+    this.hideAuthError();
+
+    const email = this.authEmail.value.trim();
+    const password = this.authPassword.value;
+
+    if (!email || !password) {
+      this.showAuthError('Please fill in all required fields.');
+      return;
+    }
+
+    // Show loading state
+    this.authSubmitBtn.disabled = true;
+    this.authSpinner.style.display = 'block';
+    this.authSubmitText.style.display = 'none';
+
+    const endpoint = this.authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Authentication failed. Please check your credentials.');
+      }
+
+      // Success: Save token & state
+      this.authToken = data.token;
+      this.currentUser = data.user;
+      localStorage.setItem('nexus_auth_token', this.authToken);
+
+      this.showApp();
+    } catch (err) {
+      this.showAuthError(err.message);
+    } finally {
+      this.authSubmitBtn.disabled = false;
+      this.authSpinner.style.display = 'none';
+      this.authSubmitText.style.display = 'inline';
+    }
+  }
+
+  showAuthOverlay() {
+    if (this.authOverlay) {
+      this.authOverlay.style.display = 'flex';
+    }
+    if (this.userProfileSection) {
+      this.userProfileSection.style.display = 'none';
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.chatMessages.innerHTML = '';
+  }
+
+  showApp() {
+    if (this.authOverlay) {
+      this.authOverlay.style.display = 'none';
+    }
+    if (this.userProfileSection) {
+      this.userProfileSection.style.display = 'flex';
+      this.currentUserEmail.textContent = this.currentUser.email;
+      this.userAvatarInitial.textContent = this.currentUser.email.charAt(0).toUpperCase();
+    }
+
+    // Initialize application features now that user is authenticated
+    this.initWebSocket();
+    this.loadSessions();
+    this.loadSystemStatus();
+  }
+
+  async logout() {
+    if (this.authToken) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${this.authToken}` }
+        });
+      } catch (e) {
+        console.warn('Logout error', e);
+      }
+    }
+
+    this.authToken = null;
+    this.currentUser = null;
+    localStorage.removeItem('nexus_auth_token');
+    this.sessionId = null;
+    this.sessionsList.innerHTML = '';
+    this.showAuthOverlay();
+  }
+
+  // Authenticated fetch helper
+  async authFetch(url, options = {}) {
+    const headers = options.headers ? { ...options.headers } : {};
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      this.logout();
+      throw new Error('Session expired. Please sign in again.');
+    }
+    return res;
+  }
+
+  // --- WebSocket Connection ---
+
   initWebSocket() {
+    if (this.ws) {
+      this.ws.close();
+    }
+    if (!this.authToken) return;
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/chat`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/chat?token=${encodeURIComponent(this.authToken)}`;
 
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('Connected to Nexus-AI WebSocket server.');
+      console.log('Connected to Nexus-AI WebSocket server (Authenticated).');
     };
 
     this.ws.onmessage = (event) => {
@@ -68,18 +277,19 @@ class NexusApp {
     };
 
     this.ws.onclose = () => {
-      console.log('WebSocket connection closed. Retrying in 2 seconds...');
-      setTimeout(() => this.initWebSocket(), 2000);
+      console.log('WebSocket closed.');
     };
   }
 
+  // --- Speech Recognition & TTS ---
+
   initSpeech() {
-    // Speech Recognition
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       this.recognition = new SpeechRecognition();
       this.recognition.continuous = false;
       this.recognition.interimResults = false;
+      this.recognition.lang = 'en-US';
 
       this.recognition.onstart = () => {
         this.isListening = true;
@@ -103,7 +313,7 @@ class NexusApp {
         this.micBtn.classList.remove('active');
       };
     } else {
-      this.micBtn.style.display = 'none';
+      if (this.micBtn) this.micBtn.style.display = 'none';
     }
   }
 
@@ -123,46 +333,70 @@ class NexusApp {
   speak(text) {
     if (!this.ttsEnabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    // Strip markdown formatting for cleaner speech
     const cleanText = text.replace(/[#*`_~\[\]\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
     const utterance = new SpeechSynthesisUtterance(cleanText.slice(0, 400));
     window.speechSynthesis.speak(utterance);
   }
 
   bindEvents() {
-    this.sendBtn.addEventListener('click', () => this.sendMessage());
+    if (this.sendBtn) {
+      this.sendBtn.addEventListener('click', () => this.sendMessage());
+    }
 
-    this.userInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        this.sendMessage();
-      }
-    });
+    if (this.userInput) {
+      this.userInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this.sendMessage();
+        }
+      });
 
-    this.userInput.addEventListener('input', () => this.autoGrowInput());
+      this.userInput.addEventListener('input', () => this.autoGrowInput());
+    }
 
-    this.newChatBtn.addEventListener('click', () => this.startNewSession());
+    if (this.newChatBtn) {
+      this.newChatBtn.addEventListener('click', () => this.startNewSession());
+    }
 
-    this.micBtn.addEventListener('click', () => this.toggleSpeechRecognition());
+    if (this.micBtn) {
+      this.micBtn.addEventListener('click', () => this.toggleSpeechRecognition());
+    }
 
-    this.ttsBtn.addEventListener('click', () => {
-      this.ttsEnabled = !this.ttsEnabled;
-      this.ttsBtn.classList.toggle('active', this.ttsEnabled);
-    });
+    if (this.ttsBtn) {
+      this.ttsBtn.addEventListener('click', () => {
+        this.ttsEnabled = !this.ttsEnabled;
+        this.ttsBtn.classList.toggle('active', this.ttsEnabled);
+      });
+    }
 
-    // File Upload
-    this.uploadBtn.addEventListener('click', () => this.fileInput.click());
-    this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+    if (this.uploadBtn) {
+      this.uploadBtn.addEventListener('click', () => this.fileInput.click());
+    }
 
-    // Settings Modal
-    this.settingsBtn.addEventListener('click', () => this.openSettings());
-    this.closeSettingsBtn.addEventListener('click', () => this.settingsModal.classList.remove('open'));
-    this.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
+    if (this.fileInput) {
+      this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+    }
 
-    // RAG Modal
-    this.ragBtn.addEventListener('click', () => this.openRagModal());
-    this.closeRagBtn.addEventListener('click', () => this.ragModal.classList.remove('open'));
-    this.clearRagBtn.addEventListener('click', () => this.clearRagKnowledge());
+    // Modal Triggers
+    if (this.settingsBtn) {
+      this.settingsBtn.addEventListener('click', () => this.openSettings());
+    }
+    if (this.closeSettingsBtn) {
+      this.closeSettingsBtn.addEventListener('click', () => this.settingsModal.classList.remove('open'));
+    }
+    if (this.saveSettingsBtn) {
+      this.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
+    }
+
+    if (this.ragBtn) {
+      this.ragBtn.addEventListener('click', () => this.openRagModal());
+    }
+    if (this.closeRagBtn) {
+      this.closeRagBtn.addEventListener('click', () => this.ragModal.classList.remove('open'));
+    }
+    if (this.clearRagBtn) {
+      this.clearRagBtn.addEventListener('click', () => this.clearRagKnowledge());
+    }
   }
 
   autoGrowInput() {
@@ -174,7 +408,12 @@ class NexusApp {
     try {
       const res = await fetch('/api/status');
       const data = await res.json();
-      this.activeModelBadge.textContent = data.active_provider.toUpperCase();
+      const provider = data.active_provider || 'self_ai';
+      if (provider === 'local' || provider === 'self_ai') {
+        this.activeModelBadge.textContent = 'SELF-AI (0 API)';
+      } else {
+        this.activeModelBadge.textContent = provider.toUpperCase();
+      }
       this.toolsCountBadge.textContent = `${data.total_tools} Tools`;
       this.ragCountBadge.textContent = `${data.rag_documents} Docs`;
     } catch (e) {
@@ -182,9 +421,12 @@ class NexusApp {
     }
   }
 
+  // --- Session Management ---
+
   async loadSessions() {
+    if (!this.authToken) return;
     try {
-      const res = await fetch('/api/sessions');
+      const res = await this.authFetch('/api/sessions');
       const data = await res.json();
       this.sessionsList.innerHTML = '';
 
@@ -231,8 +473,9 @@ class NexusApp {
   }
 
   async startNewSession() {
+    if (!this.authToken) return;
     try {
-      const res = await fetch('/api/sessions', {
+      const res = await this.authFetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'New Conversation' })
@@ -248,16 +491,15 @@ class NexusApp {
   }
 
   async switchSession(sessionId) {
-    if (this.sessionId === sessionId) return;
+    if (this.sessionId === sessionId || !this.authToken) return;
     this.sessionId = sessionId;
 
-    // Update active highlight
     document.querySelectorAll('.session-item').forEach((el) => {
       el.classList.toggle('active', el.dataset.id === sessionId);
     });
 
     try {
-      const res = await fetch(`/api/sessions/${sessionId}`);
+      const res = await this.authFetch(`/api/sessions/${sessionId}`);
       const data = await res.json();
       this.chatMessages.innerHTML = '';
 
@@ -275,8 +517,9 @@ class NexusApp {
   }
 
   async deleteSession(sessionId) {
+    if (!this.authToken) return;
     try {
-      await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      await this.authFetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
       if (this.sessionId === sessionId) {
         this.sessionId = null;
       }
@@ -324,6 +567,11 @@ class NexusApp {
   }
 
   sendMessage() {
+    if (!this.authToken) {
+      this.showAuthOverlay();
+      return;
+    }
+
     const text = this.userInput.value.trim();
     if (!text || this.isGenerating) return;
 
@@ -343,10 +591,22 @@ class NexusApp {
     this.sendBtn.disabled = true;
 
     // Send via WebSocket
-    this.ws.send(JSON.stringify({
-      session_id: this.sessionId,
-      message: text
-    }));
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        session_id: this.sessionId,
+        message: text
+      }));
+    } else {
+      this.initWebSocket();
+      setTimeout(() => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({
+            session_id: this.sessionId,
+            message: text
+          }));
+        }
+      }, 500);
+    }
   }
 
   renderUserMessage(text) {
@@ -373,200 +633,183 @@ class NexusApp {
     msgEl.innerHTML = `
       <div class="message-avatar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
-          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.5h-2v-2h2zm0-4.5h-2V7h2z"/>
+          <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+          <polyline points="2 17 12 22 22 17"></polyline>
+          <polyline points="2 12 12 17 22 12"></polyline>
         </svg>
       </div>
       <div class="message-body">
-        <div class="message-author">Nexus-AI</div>
-        <div class="thought-container"></div>
-        <div class="tools-container"></div>
-        <div class="message-content"></div>
+        <div class="message-author">NEXUS // ASSISTANT</div>
+        <div class="thought-container" style="display: none;">
+          <div class="thought-header" onclick="this.parentElement.classList.toggle('open')">
+            <span class="thought-title">🧠 Agent Thoughts</span>
+            <span class="thought-toggle">▼</span>
+          </div>
+          <div class="thought-body"></div>
+        </div>
+        <div class="tools-execution-container"></div>
+        <div class="message-content"><span class="typing-cursor">▋</span></div>
       </div>
     `;
     this.chatMessages.appendChild(msgEl);
+
     this.currentAssistantMessageEl = msgEl;
+    this.currentThoughtEl = msgEl.querySelector('.thought-body');
     this.currentContentEl = msgEl.querySelector('.message-content');
-    this.currentThoughtEl = null;
-    this.currentRawContent = '';
     this.scrollToBottom();
+  }
+
+  renderHistoricalMessage(m) {
+    const msgEl = document.createElement('div');
+    msgEl.className = `message ${m.role}`;
+
+    if (m.role === 'user') {
+      msgEl.innerHTML = `
+        <div class="message-avatar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+        </div>
+        <div class="message-body">
+          <div class="message-author">You</div>
+          <div class="message-content">${this.escapeHtml(m.content)}</div>
+        </div>
+      `;
+    } else {
+      let thoughtHtml = '';
+      if (m.thoughts) {
+        thoughtHtml = `
+          <div class="thought-container">
+            <div class="thought-header" onclick="this.parentElement.classList.toggle('open')">
+              <span class="thought-title">🧠 Agent Thoughts</span>
+              <span class="thought-toggle">▼</span>
+            </div>
+            <div class="thought-body">${this.renderMarkdown(m.thoughts)}</div>
+          </div>
+        `;
+      }
+      msgEl.innerHTML = `
+        <div class="message-avatar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+        </div>
+        <div class="message-body">
+          <div class="message-author">NEXUS // ASSISTANT</div>
+          ${thoughtHtml}
+          <div class="message-content">${this.renderMarkdown(m.content)}</div>
+        </div>
+      `;
+    }
+    this.chatMessages.appendChild(msgEl);
   }
 
   handleStreamEvent(event) {
     if (!this.currentAssistantMessageEl) return;
 
-    if (event.type === 'session_created') {
-      this.sessionId = event.session_id;
-      this.loadSessions();
-    } else if (event.type === 'thought') {
-      this.appendThought(event.data);
-    } else if (event.type === 'tool_start') {
-      this.appendToolStart(event.name, event.args);
-    } else if (event.type === 'tool_end') {
-      this.appendToolEnd(event.name, event.result);
-    } else if (event.type === 'token') {
-      this.currentRawContent += event.data;
-      this.currentContentEl.innerHTML = this.renderMarkdown(this.currentRawContent);
-      this.scrollToBottom();
-    } else if (event.type === 'done') {
-      this.isGenerating = false;
-      this.sendBtn.disabled = false;
-      if (this.ttsEnabled) {
-        this.speak(this.currentRawContent);
-      }
-      this.loadSessions();
-      this.loadSystemStatus();
-    } else if (event.type === 'error') {
-      this.currentContentEl.innerHTML += `<div style="color: var(--accent-rose); margin-top: 8px;">⚠️ ${this.escapeHtml(event.data)}</div>`;
-      this.isGenerating = false;
-      this.sendBtn.disabled = false;
+    switch (event.type) {
+      case 'session_created':
+        this.sessionId = event.session_id;
+        this.loadSessions();
+        break;
+
+      case 'thought':
+        const thoughtContainer = this.currentAssistantMessageEl.querySelector('.thought-container');
+        thoughtContainer.style.display = 'block';
+        this.currentThoughtEl.innerHTML = this.renderMarkdown(event.data);
+        this.scrollToBottom();
+        break;
+
+      case 'tool_start':
+        const toolsContainer = this.currentAssistantMessageEl.querySelector('.tools-execution-container');
+        const badge = document.createElement('div');
+        badge.className = 'tool-badge';
+        badge.id = `tool-${event.name}`;
+        badge.innerHTML = `⚙️ Executing tool: <strong>${event.name}</strong>...`;
+        toolsContainer.appendChild(badge);
+        this.scrollToBottom();
+        break;
+
+      case 'tool_end':
+        const toolBadge = this.currentAssistantMessageEl.querySelector(`#tool-${event.name}`);
+        if (toolBadge) {
+          toolBadge.innerHTML = `✅ Tool <strong>${event.name}</strong> completed`;
+          toolBadge.style.color = '#10b981';
+        }
+        break;
+
+      case 'token':
+        const cursor = this.currentContentEl.querySelector('.typing-cursor');
+        if (cursor) cursor.remove();
+        this.currentContentEl.innerHTML = this.renderMarkdown(event.data) + '<span class="typing-cursor">▋</span>';
+        this.scrollToBottom();
+        break;
+
+      case 'done':
+        const finalCursor = this.currentContentEl.querySelector('.typing-cursor');
+        if (finalCursor) finalCursor.remove();
+        this.isGenerating = false;
+        this.sendBtn.disabled = false;
+        this.loadSessions();
+        if (this.ttsEnabled) {
+          const rawAssistantText = this.currentContentEl.innerText;
+          this.speak(rawAssistantText);
+        }
+        break;
+
+      case 'error':
+        const errCursor = this.currentContentEl.querySelector('.typing-cursor');
+        if (errCursor) errCursor.remove();
+        this.currentContentEl.innerHTML += `<div style="color: var(--accent-rose); margin-top: 8px;">[Error]: ${this.escapeHtml(event.data)}</div>`;
+        this.isGenerating = false;
+        this.sendBtn.disabled = false;
+        break;
     }
   }
 
-  appendThought(thoughtText) {
-    const container = this.currentAssistantMessageEl.querySelector('.thought-container');
-    if (!this.currentThoughtEl) {
-      const box = document.createElement('div');
-      box.className = 'thought-box';
-      box.innerHTML = `
-        <div class="thought-header">
-          <span>🧠 Reasoning Process</span>
-          <span style="font-size: 11px; opacity: 0.8;">Click to toggle</span>
-        </div>
-        <div class="thought-content">${this.escapeHtml(thoughtText)}</div>
-      `;
-      const header = box.querySelector('.thought-header');
-      const content = box.querySelector('.thought-content');
-      header.onclick = () => {
-        content.style.display = content.style.display === 'none' ? 'block' : 'none';
-      };
-      container.appendChild(box);
-      this.currentThoughtEl = content;
-    } else {
-      this.currentThoughtEl.textContent += '\n' + thoughtText;
-    }
-    this.scrollToBottom();
-  }
-
-  appendToolStart(toolName, args) {
-    const container = this.currentAssistantMessageEl.querySelector('.tools-container');
-    const toolBox = document.createElement('div');
-    toolBox.className = 'tool-box';
-    toolBox.dataset.tool = toolName;
-    toolBox.innerHTML = `
-      <div class="tool-header">
-        <span>⚡ Executing Tool: <strong>${toolName}</strong></span>
-        <span class="tool-status" style="font-size: 11px; opacity: 0.8;">Running...</span>
-      </div>
-      <div class="tool-result" style="opacity: 0.7;">Input: ${this.escapeHtml(JSON.stringify(args, null, 2))}</div>
-    `;
-    container.appendChild(toolBox);
-    this.scrollToBottom();
-  }
-
-  appendToolEnd(toolName, result) {
-    const container = this.currentAssistantMessageEl.querySelector('.tools-container');
-    const box = container.querySelector(`[data-tool="${toolName}"]:last-child`);
-    if (box) {
-      const status = box.querySelector('.tool-status');
-      if (status) status.textContent = 'Completed';
-      const resultEl = box.querySelector('.tool-result');
-      if (resultEl) {
-        resultEl.style.opacity = '1';
-        resultEl.textContent = result;
-      }
-    }
-    this.scrollToBottom();
-  }
-
-  renderHistoricalMessage(m) {
-    const isUser = m.role === 'user';
-    const msgEl = document.createElement('div');
-    msgEl.className = `message ${isUser ? 'user' : 'assistant'}`;
-
-    let thoughtsHtml = '';
-    if (m.thoughts) {
-      thoughtsHtml = `
-        <div class="thought-box">
-          <div class="thought-header">
-            <span>🧠 Reasoning Process</span>
-            <span style="font-size: 11px; opacity: 0.8;">Toggle</span>
-          </div>
-          <div class="thought-content" style="display: none;">${this.escapeHtml(m.thoughts)}</div>
-        </div>
-      `;
-    }
-
-    let toolsHtml = '';
-    if (m.tool_calls && m.tool_calls.length > 0) {
-      m.tool_calls.forEach((tc) => {
-        toolsHtml += `
-          <div class="tool-box">
-            <div class="tool-header">
-              <span>⚡ Tool: <strong>${tc.name}</strong></span>
-            </div>
-            <div class="tool-result">${this.escapeHtml(tc.result || '')}</div>
-          </div>
-        `;
-      });
-    }
-
-    msgEl.innerHTML = `
-      <div class="message-avatar">
-        ${isUser ? 
-          `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>` : 
-          `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.5h-2v-2h2zm0-4.5h-2V7h2z"/></svg>`}
-      </div>
-      <div class="message-body">
-        <div class="message-author">${isUser ? 'You' : 'Nexus-AI'}</div>
-        ${thoughtsHtml}
-        ${toolsHtml}
-        <div class="message-content">${isUser ? this.escapeHtml(m.content) : this.renderMarkdown(m.content)}</div>
-      </div>
-    `;
-
-    // Bind thought toggle if present
-    const tHeader = msgEl.querySelector('.thought-header');
-    if (tHeader) {
-      const tContent = msgEl.querySelector('.thought-content');
-      tHeader.onclick = () => {
-        tContent.style.display = tContent.style.display === 'none' ? 'block' : 'none';
-      };
-    }
-
-    this.chatMessages.appendChild(msgEl);
-  }
+  // --- Document Upload & RAG ---
 
   async handleFileUpload(e) {
+    if (!this.authToken) return;
     const file = e.target.files[0];
     if (!file) return;
 
     const formData = new FormData();
     formData.append('file', file);
 
+    const originalText = this.uploadBtn.innerHTML;
+    this.uploadBtn.innerHTML = '⏳';
+    this.uploadBtn.disabled = true;
+
     try {
-      this.uploadBtn.classList.add('active');
-      const res = await fetch('/api/upload', {
+      const res = await this.authFetch('/api/upload', {
         method: 'POST',
         body: formData
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Success: ${data.message} (${data.chunks} chunks created). You can now ask questions about this document!`);
+        alert(data.message);
         this.loadSystemStatus();
       } else {
-        alert(`Upload failed: ${data.detail || 'Unknown error'}`);
+        alert(data.detail || 'Upload failed');
       }
     } catch (err) {
-      alert(`Error uploading file: ${err.message}`);
+      alert('Upload error: ' + err.message);
     } finally {
-      this.uploadBtn.classList.remove('active');
+      this.uploadBtn.innerHTML = originalText;
+      this.uploadBtn.disabled = false;
       this.fileInput.value = '';
     }
   }
 
+  // --- Settings Modal ---
+
   async openSettings() {
+    if (!this.authToken) return;
     try {
-      const res = await fetch('/api/config');
+      const res = await this.authFetch('/api/config');
       const data = await res.json();
       const cfg = data.raw;
 
@@ -580,18 +823,19 @@ class NexusApp {
 
       this.settingsModal.classList.add('open');
     } catch (e) {
-      console.error('Failed to open settings', e);
+      console.error(e);
     }
   }
 
   async saveSettings() {
+    if (!this.authToken) return;
     const payload = {
       active_provider: document.getElementById('setting-provider').value,
       gemini_api_key: document.getElementById('setting-gemini-key').value,
       openai_api_key: document.getElementById('setting-openai-key').value,
       groq_api_key: document.getElementById('setting-groq-key').value,
       ollama_base_url: document.getElementById('setting-ollama-url').value,
-      temperature: parseFloat(document.getElementById('setting-temperature').value) || 0.7,
+      temperature: parseFloat(document.getElementById('setting-temperature').value),
       system_persona: document.getElementById('setting-persona').value,
       gemini_model: "gemini-2.0-flash",
       openai_model: "gpt-4o-mini",
@@ -601,7 +845,7 @@ class NexusApp {
     };
 
     try {
-      const res = await fetch('/api/config', {
+      const res = await this.authFetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -616,8 +860,9 @@ class NexusApp {
   }
 
   async openRagModal() {
+    if (!this.authToken) return;
     try {
-      const res = await fetch('/api/rag/sources');
+      const res = await this.authFetch('/api/rag/sources');
       const data = await res.json();
       this.ragSourcesList.innerHTML = '';
 
@@ -639,9 +884,10 @@ class NexusApp {
   }
 
   async clearRagKnowledge() {
+    if (!this.authToken) return;
     if (!confirm('Are you sure you want to clear all indexed knowledge documents?')) return;
     try {
-      await fetch('/api/rag/clear', { method: 'DELETE' });
+      await this.authFetch('/api/rag/clear', { method: 'DELETE' });
       this.openRagModal();
       this.loadSystemStatus();
     } catch (e) {

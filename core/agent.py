@@ -10,7 +10,8 @@ from core.providers import (
     GeminiProvider,
     OpenAIProvider,
     OllamaProvider,
-    LocalFallbackProvider
+    LocalFallbackProvider,
+    SelfAIProvider
 )
 
 class AgentOrchestrator:
@@ -20,9 +21,11 @@ class AgentOrchestrator:
 
     def get_provider(self) -> BaseLLMProvider:
         cfg = load_config()
-        active = cfg.get("active_provider", "local")
+        active = cfg.get("active_provider", "self_ai")
 
-        if active == "gemini":
+        if active in ["local", "self_ai"]:
+            return SelfAIProvider()
+        elif active == "gemini":
             key = cfg.get("gemini_api_key", "").strip()
             if key:
                 return GeminiProvider(api_key=key, model=cfg.get("gemini_model", "gemini-2.0-flash"))
@@ -44,8 +47,8 @@ class AgentOrchestrator:
                 model=cfg.get("ollama_model", "llama3")
             )
 
-        # Default fallback provider
-        return LocalFallbackProvider()
+        # Default self-contained AI provider
+        return SelfAIProvider()
 
     async def run_stream(
         self,

@@ -16,12 +16,11 @@ Nexus-AI is a full-stack, modular, multimodal AI agent and assistant platform de
    - 📁 **Workspace File Manager (`file_manager`)**: Read, write, append, and list files inside your project directory safely.
    - 🧮 **Scientific Calculator (`calculator`)**: Evaluates mathematical and trigonometric expressions with exact precision.
 
-3. **Multi-Provider LLM Orchestrator**:
-   - **Local Fallback Engine**: Works 100% offline out-of-the-box with **zero API keys required**.
-   - **Google Gemini**: Supports `gemini-2.0-flash`, `gemini-1.5-flash`, etc.
-   - **OpenAI**: Supports `gpt-4o`, `gpt-4o-mini`, etc.
-   - **Groq**: Ultra-fast inference with `llama-3.3-70b-versatile` / `deepseek-r1`.
-   - **Ollama**: Connects directly to local offline LLMs running on `http://localhost:11434`.
+3. **Nexus Self-AI & Multi-Provider Architecture**:
+   - 🤖 **Nexus Self-AI Engine**: 100% self-hosted, private, and offline out-of-the-box with **zero API keys required**. Features conversational memory, embedded knowledge graph, and autonomous tool routing.
+   - 🦙 **Ollama Local LLMs**: Zero-API offline neural generation (Llama 3, Phi-3, DeepSeek, Mistral) running directly on your hardware.
+   - 🌐 **Cloud Providers (Optional)**: Optional connectors for Google Gemini, OpenAI, or Groq if desired.
+
 
 4. **Hybrid Memory & RAG Knowledge Base**:
    - Persistent SQLite conversation history across multiple chat sessions.

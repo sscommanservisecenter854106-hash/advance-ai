@@ -190,82 +190,47 @@ class OllamaProvider(BaseLLMProvider):
             content = msg.get("content", "")
             return ProviderResponse(content=content)
 
-class LocalFallbackProvider(BaseLLMProvider):
+from core.self_ai import SelfAIEngine
+
+class SelfAIProvider(BaseLLMProvider):
     """
-    Built-in Intelligent Reasoning Engine that operates 100% offline without any API keys.
-    Understands intent, triggers tools (calculator, code runner, search, file manager),
-    and gives rich structured responses.
+    100% Self-Contained, Autonomous AI Engine for Nexus-AI.
+    Operates completely offline with zero external API calls, zero API keys, and zero telemetry.
     """
+    def __init__(self, ollama_fallback: bool = True):
+        self.ollama_fallback = ollama_fallback
+
     async def generate(
         self,
         messages: List[Dict[str, str]],
         tools_schema: Optional[List[dict]] = None,
         temperature: float = 0.7
     ) -> ProviderResponse:
+        # Extract RAG context from system message if present
+        system_msg = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
+        rag_context = ""
+        if "Relevant Knowledge Base Information:" in system_msg:
+            rag_context = system_msg.split("Relevant Knowledge Base Information:")[-1]
+
         last_msg = messages[-1]["content"] if messages else ""
-        query = last_msg.strip().lower()
 
-        # Check if the last message is a tool result
-        if any(m["role"] == "system" and "Tool Observation:" in m["content"] for m in messages[-2:]):
-            obs_msg = [m["content"] for m in messages if "Tool Observation:" in m.get("content", "")][-1]
-            return ProviderResponse(
-                content=f"Here is the result based on execution:\n\n{obs_msg.replace('Tool Observation:', '').strip()}\n\nIs there anything else you would like me to process or analyze?",
-                thought="Synthesized the tool execution observation into a structured final response."
-            )
+        # Check if local offline Ollama is running (optional local neural accelerator)
+        if self.ollama_fallback and not any("Tool Observation:" in m.get("content", "") for m in messages[-2:]):
+            local_llm_result = await SelfAIEngine.try_local_ollama(messages)
+            if local_llm_result:
+                return ProviderResponse(
+                    content=local_llm_result,
+                    thought="Generated response using local offline Ollama neural weights (100% private, 0 APIs)."
+                )
 
-        # 1. Math / Calculation detection
-        math_match = re.search(r"(\bcalc(?:ulate)?|\bcompute|\beval|\bwhat is|\bhow much is)\s+([0-9\.\s\+\-\*\/\^\(\)\%\,\'\"a-z]+)", query)
-        calc_symbols = re.search(r"^[0-9\.\s\+\-\*\/\^\(\)]+$", query)
-        if (math_match or calc_symbols) and not any(kw in query for kw in ["code", "python", "script", "file"]):
-            expr = math_match.group(2).strip("? .") if math_match else query.strip()
-            # Clean expression
-            expr = expr.replace("x", "*").replace("times", "*").replace("divided by", "/")
-            return ProviderResponse(
-                thought=f"User asked for mathematical computation: '{expr}'. Invoking the safe Calculator tool.",
-                tool_calls=[{"name": "calculator", "args": {"expression": expr}}]
-            )
-
-        # 2. Python Code Execution detection
-        if any(kw in query for kw in ["run python", "execute python", "run code", "calculate prime", "fibonacci", "generate code"]):
-            # Extract code if present inside backticks
-            code_match = re.search(r"```(?:python)?(.*?)```", last_msg, re.DOTALL)
-            code = code_match.group(1).strip() if code_match else ""
-            if not code:
-                # Provide default sample task or prime calculation
-                code = "print([x for x in range(2, 50) if all(x % d != 0 for d in range(2, int(x**0.5) + 1))])"
-            return ProviderResponse(
-                thought="Detected request to execute Python code. Sending to sandboxed code runner tool.",
-                tool_calls=[{"name": "code_runner", "args": {"code": code}}]
-            )
-
-        # 3. File workspace inspection
-        if any(kw in query for kw in ["list file", "show file", "what files", "directory", "dir", "ls"]):
-            return ProviderResponse(
-                thought="User wants to inspect workspace files. Calling file_manager tool.",
-                tool_calls=[{"name": "file_manager", "args": {"action": "list", "path": "."}}]
-            )
-
-        # 4. Web search request
-        if any(kw in query for kw in ["search web", "google", "search for", "look up", "who is", "latest news"]):
-            search_term = re.sub(r"^(search web for|search for|google|search|look up)\s*", "", query).strip("? .")
-            return ProviderResponse(
-                thought=f"Detected request for web information: '{search_term}'. Calling live web search tool.",
-                tool_calls=[{"name": "web_search", "args": {"query": search_term}}]
-            )
-
-        # 5. General intelligent response
+        # Process through native SelfAIEngine cognitive reasoning loop
+        result = SelfAIEngine.process_query(last_msg, messages, rag_context=rag_context)
         return ProviderResponse(
-            thought="Local Fallback Engine activated. Formulating structured conversational response.",
-            content=(
-                f"### 👋 Welcome to **Nexus-AI**!\n\n"
-                f"I am running on the **Built-in Local Agent Engine**.\n\n"
-                f"I can autonomously reason and execute tasks using my integrated tools:\n"
-                f"- 🐍 **Python Sandbox**: Ask me to run code or perform complex algorithms.\n"
-                f"- 🌐 **Web Search**: Ask me to search the live web for facts and articles.\n"
-                f"- 📁 **File Manager**: Inspect or manage files in your project workspace.\n"
-                f"- 🧮 **Calculator**: Precise scientific and arithmetic computations.\n"
-                f"- 📚 **RAG Memory**: Drag and drop documents to chat with them.\n\n"
-                f"> 💡 **Tip**: You can also connect **Google Gemini**, **OpenAI**, **Groq**, or **Ollama** "
-                f"by clicking the **⚙️ Settings** icon in the top navigation bar to unlock state-of-the-art LLM intelligence!"
-            )
+            content=result.get("content", ""),
+            thought=result.get("thought", ""),
+            tool_calls=result.get("tool_calls", [])
         )
+
+# Backward-compatibility alias
+LocalFallbackProvider = SelfAIProvider
+
