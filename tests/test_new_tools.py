@@ -19,6 +19,7 @@ import tools.file_manager
 import tools.calculator
 import tools.system_info
 import tools.weather_info
+import tools.datetime_info
 from core.self_ai import SelfAIEngine
 
 async def run_tests():
@@ -26,14 +27,14 @@ async def run_tests():
     print(">>> Testing Nexus-AI Expanded Toolset & Engine <<<")
     print("==================================================")
 
-    # 1. Verify all 6 tools are registered
-    print("\n[1/5] Verifying Tool Registry...")
+    # 1. Verify all 7 tools are registered
+    print("\n[1/6] Verifying Tool Registry...")
     tools = [t.name for t in ToolRegistry.list_all()]
     print(f"    Registered tools: {tools}")
-    expected_tools = ["code_runner", "web_search", "file_manager", "calculator", "system_info", "weather_info"]
+    expected_tools = ["code_runner", "web_search", "file_manager", "calculator", "system_info", "weather_info", "datetime_info"]
     for t in expected_tools:
         assert t in tools, f"Tool '{t}' missing from registry!"
-    print("    [PASS] All 6 tools successfully registered.")
+    print(f"    [PASS] All {len(expected_tools)} tools successfully registered.")
 
     # 2. Test SystemInfoTool
     print("\n[2/5] Testing SystemInfoTool...")
@@ -45,13 +46,19 @@ async def run_tests():
     print("    [PASS] SystemInfoTool returned comprehensive diagnostics.")
 
     # 3. Test WeatherInfoTool
-    print("\n[3/5] Testing WeatherInfoTool...")
+    print("\n[3/6] Testing WeatherInfoTool...")
     w_res = await ToolRegistry.execute("weather_info", location="Paris")
     assert "Weather" in w_res or "Temperature" in w_res or "Conditions" in w_res
     print(f"    [PASS] WeatherInfoTool returned live data: {w_res.splitlines()[0]}")
 
-    # 4. Test SelfAIEngine Routing
-    print("\n[4/5] Testing Autonomous Intent Routing...")
+    # 4. Test DateTimeTool
+    print("\n[4/6] Testing DateTimeTool...")
+    dt_res = await ToolRegistry.execute("datetime_info", format="full")
+    assert "Date" in dt_res and "Time" in dt_res
+    print(f"    [PASS] DateTimeTool returned live report: {dt_res.splitlines()[0]}")
+
+    # 5. Test SelfAIEngine Routing
+    print("\n[5/6] Testing Autonomous Intent Routing...")
     q_sys = SelfAIEngine.process_query("what are the system hardware specs and available disk space?", [])
     assert len(q_sys["tool_calls"]) == 1
     assert q_sys["tool_calls"][0]["name"] == "system_info"
@@ -63,8 +70,13 @@ async def run_tests():
     assert "tokyo" in q_w["tool_calls"][0]["args"]["location"].lower()
     print("    [PASS] Weather query routed to weather_info tool.")
 
-    # 5. Test Expanded Knowledge Graph
-    print("\n[5/5] Testing Expanded Knowledge Graph Nodes...")
+    q_dt = SelfAIEngine.process_query("what is today date and current time?", [])
+    assert len(q_dt["tool_calls"]) == 1
+    assert q_dt["tool_calls"][0]["name"] == "datetime_info"
+    print("    [PASS] Date/time query routed to datetime_info tool.")
+
+    # 6. Test Expanded Knowledge Graph
+    print("\n[6/6] Testing Expanded Knowledge Graph Nodes...")
     nodes_to_test = ["dijkstra", "jwt", "asyncio", "kubernetes", "lora", "diffusion"]
     for node in nodes_to_test:
         res = SelfAIEngine.process_query(f"explain {node}", [])
@@ -72,7 +84,7 @@ async def run_tests():
     print(f"    [PASS] All {len(nodes_to_test)} knowledge nodes validated.")
 
     print("\n==================================================")
-    print(">>> ALL 5 ENHANCEMENT VERIFICATION TESTS PASSED! <<<")
+    print(">>> ALL 6 ENHANCEMENT VERIFICATION TESTS PASSED! <<<")
     print("==================================================")
 
 if __name__ == "__main__":

@@ -58,6 +58,15 @@ class SystemInfoTool(BaseTool):
                     f"   - Used:  {used / gb:.2f} GB ({pct_used:.1f}%)\n"
                     f"   - Free:  {free / gb:.2f} GB"
                 )
+            # 4. Hostname & Network
+            if query_type in ["all", "os", "network"]:
+                import socket
+                hostname = platform.node() or socket.gethostname()
+                try:
+                    local_ip = socket.gethostbyname(hostname)
+                except Exception:
+                    local_ip = "127.0.0.1"
+                results.append(f"🌐 **Hostname / Node**: `{hostname}` (LAN IP: `{local_ip}`)")
 
             return "\n".join(results)
         except Exception as e:

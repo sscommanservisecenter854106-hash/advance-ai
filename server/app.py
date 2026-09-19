@@ -23,6 +23,7 @@ import tools.file_manager
 import tools.calculator
 import tools.system_info
 import tools.weather_info
+import tools.datetime_info
 
 from memory.store import MemoryStore
 from memory.rag import DocumentRAG

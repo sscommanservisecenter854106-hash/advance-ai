@@ -237,6 +237,8 @@
           <button class="btn-primary" onclick="document.getElementById('file-input').click()">Upload New File</button>
         </div>
       </div>
+    </div>
+
     <!-- Cyber-Glass Auth Gate Modal (Required before accessing platform) -->
     <div id="auth-overlay" class="auth-backdrop">
       <div class="auth-card">
@@ -276,6 +278,16 @@
           <button type="submit" id="auth-submit-btn" class="auth-submit-btn">
             <span id="auth-submit-text">Sign In</span>
             <div id="auth-spinner" class="spinner" style="display: none;"></div>
+          </button>
+
+          <div style="display: flex; align-items: center; margin: 14px 0 10px 0; gap: 10px;">
+            <div style="flex: 1; height: 1px; background: var(--border-glass);"></div>
+            <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">OR</span>
+            <div style="flex: 1; height: 1px; background: var(--border-glass);"></div>
+          </div>
+
+          <button type="button" id="auth-guest-btn" class="btn-secondary" style="width: 100%; justify-content: center; padding: 10px; border-color: rgba(0, 240, 255, 0.35); color: var(--accent-cyan); font-weight: 500;">
+            ⚡ 1-Click Local Guest Access
           </button>
         </form>
 

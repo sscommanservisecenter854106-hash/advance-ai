@@ -29,7 +29,7 @@ DEFAULT_CONFIG = {
         "file workspace operations, and exact mathematical calculation. "
         "Always be helpful, precise, analytical, and structured in your explanations."
     ),
-    "enabled_tools": ["code_runner", "web_search", "file_manager", "calculator", "system_info", "weather_info"]
+    "enabled_tools": ["code_runner", "web_search", "file_manager", "calculator", "system_info", "weather_info", "datetime_info"]
 }
 
 

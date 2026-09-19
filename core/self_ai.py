@@ -341,14 +341,36 @@ class SelfAIEngine:
                 "content": ""
             }
 
-        # 6. Host System Diagnostics Tool Routing
-        if any(kw in q for kw in ["system info", "system status", "specs", "disk space", "cpu core", "operating system", "system diagnostic", "host info", "hardware specs"]):
+        # 6. Live Date, Time & Calendar Inquiries
+        if any(kw in q for kw in [
+            "what time", "current time", "time now", "what is the time", "tell me the time",
+            "what is today's date", "today date", "current date", "what date is it", "aaj kya date",
+            "kya time", "kya samay", "aaj kaun sa din", "what day is today",
+            "calendar", "current timestamp", "exact time"
+        ]):
+            fmt = "full"
+            if any(k in q for k in ["date", "tarikh", "din", "day"]):
+                fmt = "date"
+            elif any(k in q for k in ["time", "samay", "baje", "clock"]):
+                fmt = "time"
+            return {
+                "thought": f"User requested live date/time ('{fmt}'). Routing to datetime_info tool.",
+                "tool_calls": [{"name": "datetime_info", "args": {"format": fmt}}],
+                "content": ""
+            }
+
+        # 7. Host System Diagnostics Tool Routing
+        if any(kw in q for kw in [
+            "system info", "system status", "specs", "disk space", "cpu core", "operating system",
+            "system diagnostic", "host info", "hardware specs", "machine info", "computer specs",
+            "system check", "pc status"
+        ]):
             q_type = "all"
-            if "disk" in q:
+            if "disk" in q or "storage" in q or "hard drive" in q:
                 q_type = "disk"
-            elif "cpu" in q:
+            elif "cpu" in q or "processor" in q or "core" in q:
                 q_type = "cpu"
-            elif "os" in q or "operating system" in q:
+            elif "os" in q or "operating system" in q or "windows" in q or "linux" in q:
                 q_type = "os"
             return {
                 "thought": f"User requested system diagnostics ('{q_type}'). Routing to system_info tool.",
@@ -356,17 +378,17 @@ class SelfAIEngine:
                 "content": ""
             }
 
-        # 7. Real-Time Weather Tool Routing
-        weather_match = re.search(r"\b(?:weather|temperature|forecast|climate)\s+(?:in|for|of|at)\s+([A-Za-z\s,\.-]+)", q)
+        # 8. Real-Time Weather Tool Routing
+        weather_match = re.search(r"\b(?:weather|temperature|forecast|climate|mausam)\s+(?:in|for|of|at|ka)?\s*([A-Za-z\s,\.-]+)", q)
         if not weather_match:
-            weather_match = re.search(r"([A-Za-z\s]+)\s+(?:weather|forecast)", q)
-        if (weather_match or "weather" in q) and not any(kw in q for kw in ["api", "code", "function", "create", "whether"]):
+            weather_match = re.search(r"([A-Za-z\s]+)\s+(?:weather|forecast|mausam)", q)
+        if (weather_match or "weather" in q or "mausam" in q) and not any(kw in q for kw in ["api", "code", "function", "create", "whether"]):
             loc = "London"
             if weather_match:
                 loc = weather_match.group(1).strip("? .")
-                loc = re.sub(r"\b(current|today|live|right now|the|is|like|what)\b", "", loc).strip()
-            if not loc:
-                loc = "London"
+                loc = re.sub(r"\b(current|today|live|right now|the|is|like|what|ka|kaisa|hai)\b", "", loc).strip()
+            if not loc or loc in ["kaisa", "kya", "in", "ka"]:
+                loc = "Delhi"
             return {
                 "thought": f"Detected real-time weather query for '{loc}'. Routing to weather_info tool.",
                 "tool_calls": [{"name": "weather_info", "args": {"location": loc}}],

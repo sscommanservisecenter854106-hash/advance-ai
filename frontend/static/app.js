@@ -66,6 +66,7 @@ class NexusApp {
     this.authSubmitText = document.getElementById('auth-submit-text');
     this.authSpinner = document.getElementById('auth-spinner');
     this.authError = document.getElementById('auth-error');
+    this.authGuestBtn = document.getElementById('auth-guest-btn');
 
     // User Profile in Sidebar
     this.userProfileSection = document.getElementById('user-profile-section');
@@ -86,6 +87,11 @@ class NexusApp {
     // Bind Auth Form Submit
     if (this.authForm) {
       this.authForm.onsubmit = (e) => this.handleAuthSubmit(e);
+    }
+
+    // Bind 1-Click Guest Access
+    if (this.authGuestBtn) {
+      this.authGuestBtn.onclick = () => this.handleGuestAuth();
     }
 
     // Bind Logout
@@ -188,6 +194,52 @@ class NexusApp {
       this.authSubmitBtn.disabled = false;
       this.authSpinner.style.display = 'none';
       this.authSubmitText.style.display = 'inline';
+    }
+  }
+
+  async handleGuestAuth() {
+    this.hideAuthError();
+    const guestEmail = 'guest@nexus.ai';
+    const guestPass = 'nexus_guest_pass_123';
+
+    if (this.authGuestBtn) {
+      this.authGuestBtn.disabled = true;
+      this.authGuestBtn.textContent = 'Connecting...';
+    }
+
+    try {
+      // Try login first
+      let res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: guestEmail, password: guestPass })
+      });
+
+      // If account does not exist, auto-register
+      if (!res.ok) {
+        res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: guestEmail, password: guestPass })
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Guest access failed');
+      }
+
+      this.authToken = data.token;
+      this.currentUser = data.user;
+      localStorage.setItem('nexus_auth_token', this.authToken);
+      this.showApp();
+    } catch (err) {
+      this.showAuthError('Guest access error: ' + err.message);
+    } finally {
+      if (this.authGuestBtn) {
+        this.authGuestBtn.disabled = false;
+        this.authGuestBtn.textContent = '⚡ 1-Click Local Guest Access';
+      }
     }
   }
 

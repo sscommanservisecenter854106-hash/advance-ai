@@ -16,6 +16,7 @@
     "file_manager",
     "calculator",
     "system_info",
-    "weather_info"
+    "weather_info",
+    "datetime_info"
   ]
 }

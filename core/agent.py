@@ -1,7 +1,7 @@
 import asyncio
 import json
 from typing import List, Dict, Any, Callable, Awaitable, Optional
-from config import load_config
+from config import load_config, DEFAULT_CONFIG
 from tools.registry import ToolRegistry
 from memory.store import MemoryStore
 from memory.rag import DocumentRAG
@@ -66,7 +66,9 @@ class AgentOrchestrator:
         """
         cfg = load_config()
         provider = self.get_provider()
-        enabled_tools = cfg.get("enabled_tools", ["code_runner", "web_search", "file_manager", "calculator"])
+        enabled_tools = cfg.get("enabled_tools", DEFAULT_CONFIG.get("enabled_tools", [
+            "code_runner", "web_search", "file_manager", "calculator", "system_info", "weather_info"
+        ]))
         tools_schema = ToolRegistry.get_schemas(enabled_tools)
 
         # 1. Save user message to memory store
