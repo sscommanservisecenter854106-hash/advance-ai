@@ -513,7 +513,7 @@ class NexusApp {
         this.renderSessionItem(s);
       });
 
-      if (!this.sessionId && data.sessions.length > 0) {
+      if (!this.sessionId && !this.isGenerating && data.sessions.length > 0) {
         this.switchSession(data.sessions[0].id);
       }
     } catch (e) {
@@ -565,7 +565,7 @@ class NexusApp {
   }
 
   async switchSession(sessionId) {
-    if (this.sessionId === sessionId || !this.authToken) return;
+    if (this.sessionId === sessionId || !this.authToken || this.isGenerating) return;
     this.sessionId = sessionId;
 
     document.querySelectorAll('.session-item').forEach((el) => {
@@ -672,22 +672,30 @@ class NexusApp {
     this.isGenerating = true;
     this.sendBtn.disabled = true;
 
-    // Send via WebSocket
+    // Send via WebSocket with retry connection polling
+    const payload = {
+      session_id: this.sessionId,
+      message: text
+    };
+
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        session_id: this.sessionId,
-        message: text
-      }));
+      this.ws.send(JSON.stringify(payload));
     } else {
       this.initWebSocket();
-      setTimeout(() => {
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({
-            session_id: this.sessionId,
-            message: text
-          }));
+          clearInterval(poll);
+          this.ws.send(JSON.stringify(payload));
+        } else if (attempts >= 30) { // 3 seconds timeout
+          clearInterval(poll);
+          this.handleStreamEvent({
+            type: 'error',
+            data: 'Connection to Nexus-AI server timed out. Please check that the server is running.'
+          });
         }
-      }, 500);
+      }, 100);
     }
   }
 
@@ -738,6 +746,8 @@ class NexusApp {
     this.currentAssistantMessageEl = msgEl;
     this.currentThoughtEl = msgEl.querySelector('.thought-body');
     this.currentContentEl = msgEl.querySelector('.message-content');
+    this.currentContentText = '';
+    this.currentThoughtText = '';
     this.scrollToBottom();
   }
 
@@ -794,24 +804,27 @@ class NexusApp {
     switch (event.type) {
       case 'session_created':
         this.sessionId = event.session_id;
-        this.loadSessions();
+        // Do not reload or switch sessions while active streaming is underway
         break;
 
       case 'thought':
+        this.currentThoughtText = (this.currentThoughtText || '') + (this.currentThoughtText ? '\n\n' : '') + event.data;
         const thoughtContainer = this.currentAssistantMessageEl.querySelector('.thought-container');
-        thoughtContainer.style.display = 'block';
-        this.currentThoughtEl.innerHTML = this.renderMarkdown(event.data);
+        if (thoughtContainer) thoughtContainer.style.display = 'block';
+        if (this.currentThoughtEl) this.currentThoughtEl.innerHTML = this.renderMarkdown(this.currentThoughtText);
         this.scrollToBottom();
         break;
 
       case 'tool_start':
         const toolsContainer = this.currentAssistantMessageEl.querySelector('.tools-execution-container');
-        const badge = document.createElement('div');
-        badge.className = 'tool-badge';
-        badge.id = `tool-${event.name}`;
-        badge.innerHTML = `⚙️ Executing tool: <strong>${event.name}</strong>...`;
-        toolsContainer.appendChild(badge);
-        this.scrollToBottom();
+        if (toolsContainer) {
+          const badge = document.createElement('div');
+          badge.className = 'tool-badge';
+          badge.id = `tool-${event.name}`;
+          badge.innerHTML = `⚙️ Executing tool: <strong>${event.name}</strong>...`;
+          toolsContainer.appendChild(badge);
+          this.scrollToBottom();
+        }
         break;
 
       case 'tool_end':
@@ -823,15 +836,19 @@ class NexusApp {
         break;
 
       case 'token':
+        this.currentContentText = (this.currentContentText || '') + event.data;
         const cursor = this.currentContentEl.querySelector('.typing-cursor');
         if (cursor) cursor.remove();
-        this.currentContentEl.innerHTML = this.renderMarkdown(event.data) + '<span class="typing-cursor">▋</span>';
+        this.currentContentEl.innerHTML = this.renderMarkdown(this.currentContentText) + '<span class="typing-cursor">▋</span>';
         this.scrollToBottom();
         break;
 
       case 'done':
         const finalCursor = this.currentContentEl.querySelector('.typing-cursor');
         if (finalCursor) finalCursor.remove();
+        if (this.currentContentText) {
+          this.currentContentEl.innerHTML = this.renderMarkdown(this.currentContentText);
+        }
         this.isGenerating = false;
         this.sendBtn.disabled = false;
         this.loadSessions();

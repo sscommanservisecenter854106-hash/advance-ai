@@ -41,7 +41,13 @@ class GeminiProvider(BaseLLMProvider):
         system_instruction = None
         for m in messages:
             if m["role"] == "system":
-                system_instruction = {"parts": [{"text": m["content"]}]}
+                if "Observation" in m.get("content", ""):
+                    contents.append({
+                        "role": "user",
+                        "parts": [{"text": f"[Tool Observation]\n{m['content']}"}]
+                    })
+                else:
+                    system_instruction = {"parts": [{"text": m["content"]}]}
             else:
                 role = "user" if m["role"] == "user" else "model"
                 contents.append({
@@ -215,7 +221,8 @@ class SelfAIProvider(BaseLLMProvider):
         last_msg = messages[-1]["content"] if messages else ""
 
         # Check if local offline Ollama is running (optional local neural accelerator)
-        if self.ollama_fallback and not any("Tool Observation:" in m.get("content", "") for m in messages[-2:]):
+        has_obs = any("Observation" in m.get("content", "") for m in messages[-2:])
+        if self.ollama_fallback and not has_obs:
             local_llm_result = await SelfAIEngine.try_local_ollama(messages)
             if local_llm_result:
                 return ProviderResponse(

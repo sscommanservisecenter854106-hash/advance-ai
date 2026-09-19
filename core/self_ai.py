@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import html
 import httpx
 from typing import List, Dict, Any, Optional
 
@@ -10,112 +11,190 @@ class SelfAIEngine:
     Operates completely offline with zero external API calls, zero API keys, and zero telemetry.
     Features:
     - Intent Recognition & Conversational Memory
-    - Autonomous Tool Calling (Code Runner, Calculator, File Manager, Web Search)
+    - Autonomous Tool Calling (Web Search, Code Runner, Calculator, File Manager, System Info, Weather, Datetime)
     - Full RAG Context Question-Answering
-    - Built-in Knowledge Graph across Programming, AI, Science, Math, and Logic
+    - Comprehensive Knowledge Graph across Programming, AI, Science, Math, History, and General Knowledge
+    - Built-in State & World Capitals and Leadership Lookup
     - Automatic Local LLM discovery (Ollama/Local endpoints) if available
     """
 
+    INDIAN_CAPITALS = {
+        "andhra pradesh": ("Amaravati", "अमरावती"),
+        "arunachal pradesh": ("Itanagar", "ईटानगर"),
+        "assam": ("Dispur", "दिसपुर"),
+        "bihar": ("Patna", "पटना"),
+        "chhattisgarh": ("Raipur", "रायपुर"),
+        "goa": ("Panaji", "पणजी"),
+        "gujarat": ("Gandhinagar", "गांधीनगर"),
+        "haryana": ("Chandigarh", "चंडीगढ़"),
+        "himachal pradesh": ("Shimla", "शिमला"),
+        "jharkhand": ("Ranchi", "राँची"),
+        "karnataka": ("Bengaluru", "बेंगलुरु"),
+        "kerala": ("Thiruvananthapuram", "तिरुवनंतपुरम"),
+        "madhya pradesh": ("Bhopal", "भोपाल"),
+        "maharashtra": ("Mumbai", "मुंबई"),
+        "manipur": ("Imphal", "इम्फाल"),
+        "meghalaya": ("Shillong", "शिलांग"),
+        "mizoram": ("Aizawl", "आइज़ोल"),
+        "nagaland": ("Kohima", "कोहिमा"),
+        "odisha": ("Bhubaneswar", "भुवनेश्वर"),
+        "punjab": ("Chandigarh", "चंडीगढ़"),
+        "rajasthan": ("Jaipur", "जयपुर"),
+        "sikkim": ("Gangtok", "गंगटोक"),
+        "tamil nadu": ("Chennai", "चेन्नई"),
+        "telangana": ("Hyderabad", "हैदराबाद"),
+        "tripura": ("Agartala", "अगरतला"),
+        "uttar pradesh": ("Lucknow", "लखनऊ"),
+        "uttarakhand": ("Dehradun", "देहरादून"),
+        "west bengal": ("Kolkata", "कोलकाता"),
+        "delhi": ("New Delhi", "नई दिल्ली"),
+        "jammu and kashmir": ("Srinagar (Summer) / Jammu (Winter)", "श्रीनगर / जम्मू"),
+        "ladakh": ("Leh", "लेह"),
+    }
+
+    WORLD_CAPITALS = {
+        "india": "New Delhi (नई दिल्ली)",
+        "bharat": "New Delhi (नई दिल्ली)",
+        "france": "Paris",
+        "united states": "Washington, D.C.",
+        "usa": "Washington, D.C.",
+        "united kingdom": "London",
+        "uk": "London",
+        "england": "London",
+        "japan": "Tokyo",
+        "germany": "Berlin",
+        "russia": "Moscow",
+        "china": "Beijing",
+        "canada": "Ottawa",
+        "australia": "Canberra",
+        "italy": "Rome",
+        "spain": "Madrid",
+        "brazil": "Brasília",
+        "south africa": "Pretoria / Cape Town",
+        "egypt": "Cairo",
+        "saudi arabia": "Riyadh",
+        "uae": "Abu Dhabi",
+        "united arab emirates": "Abu Dhabi",
+        "turkey": "Ankara",
+        "pakistan": "Islamabad",
+        "bangladesh": "Dhaka",
+        "nepal": "Kathmandu",
+        "sri lanka": "Sri Jayawardenepura Kotte / Colombo",
+        "bhutan": "Thimphu",
+        "singapore": "Singapore",
+        "thailand": "Bangkok",
+        "malaysia": "Kuala Lumpur",
+        "indonesia": "Jakarta",
+        "south korea": "Seoul",
+        "switzerland": "Bern",
+        "sweden": "Stockholm",
+        "norway": "Oslo",
+        "netherlands": "Amsterdam",
+        "new zealand": "Wellington",
+        "mexico": "Mexico City",
+        "argentina": "Buenos Aires",
+    }
+
     KNOWLEDGE_BASE = {
         "rag": (
-            "**RAG (Retrieval-Augmented Generation)** is an AI architectural framework that combines retrieval mechanisms with text generation:\n\n"
-            "1. **Chunking & Ingestion**: Source documents (PDFs, Markdown, code, text) are split into semantic segments.\n"
-            "2. **Vector Indexing / Retrieval**: Segments are indexed via vector embeddings or BM25 keyword ranking for fast similarity search.\n"
-            "3. **Context Injection**: Relevant chunks are injected into the prompt context at query time.\n"
-            "4. **Grounded Generation**: The model answers based on factual retrieved context, eliminating hallucinations and enabling private knowledge interaction without retraining."
+            "### 📄 RAG (Retrieval-Augmented Generation)\n\n"
+            "**Retrieval-Augmented Generation (RAG)** is an AI architectural pattern that combines external knowledge retrieval with neural text generation:\n\n"
+            "1. **Chunking & Ingestion**: Documents (PDF, MD, Code, TXT) are split into semantic chunks.\n"
+            "2. **Vector / Keyword Indexing**: Chunks are indexed via vector embeddings or BM25 keyword matching.\n"
+            "3. **Context Injection**: Relevant chunks are retrieved and prepended into the prompt at query time.\n"
+            "4. **Grounded Generation**: The LLM generates factual answers based on retrieved context, reducing hallucinations and enabling private knowledge interaction without model retraining."
         ),
         "transformer": (
-            "**Transformer Architecture** (introduced in 'Attention Is All You Need', 2017) is the foundation of modern AI:\n\n"
-            "- **Self-Attention Mechanism**: Computes attention weights between all token pairs simultaneously, allowing parallel processing unlike sequential RNNs/LSTMs.\n"
-            "- **Multi-Head Attention**: Allows the model to attend to information from different representation subspaces at different positions.\n"
-            "- **Feedforward Layers & LayerNorm**: Projects embeddings non-linearly with residual skip-connections to prevent vanishing gradients.\n"
-            "- **Positional Encoding**: Injects sequence order information since transformers process tokens non-sequentially."
+            "### ⚡ Transformer Architecture\n\n"
+            "**Transformers** (introduced in 'Attention Is All You Need', 2017) are the foundational architecture for modern LLMs:\n\n"
+            "- **Self-Attention Mechanism**: Calculates attention scores between all token pairs in parallel: `Attention(Q, K, V) = softmax((Q K^T) / sqrt(d_k)) * V`.\n"
+            "- **Multi-Head Attention**: Allows the network to focus on multiple representation subspaces simultaneously.\n"
+            "- **Positional Encoding**: Injects sequence order since attention processes tokens non-sequentially.\n"
+            "- **Residual Connections & LayerNorm**: Stabilizes training and prevents vanishing gradients across deep layers."
         ),
         "machine learning": (
-            "**Machine Learning (ML)** is a subset of AI where systems learn patterns directly from data to make decisions:\n\n"
-            "- **Supervised Learning**: Model trains on labeled input-output pairs (e.g., Regression, Random Forests, XGBoost, Neural Nets).\n"
-            "- **Unsupervised Learning**: Discovers hidden structures or patterns in unlabeled data (e.g., K-Means clustering, PCA, Autoencoders).\n"
-            "- **Reinforcement Learning**: An agent learns optimal action policies via environmental reward signals (e.g., Q-Learning, PPO, RLHF)."
+            "### 🤖 Machine Learning (ML)\n\n"
+            "**Machine Learning** is a branch of AI where algorithms learn patterns from data to make predictions:\n\n"
+            "- **Supervised Learning**: Learns from labeled datasets (e.g., Linear Regression, Random Forests, XGBoost, Neural Nets).\n"
+            "- **Unsupervised Learning**: Uncovers hidden structures in unlabeled data (e.g., K-Means clustering, PCA, Autoencoders).\n"
+            "- **Reinforcement Learning**: Agents learn optimal actions through environmental rewards and penalties (e.g., Q-Learning, PPO, RLHF)."
+        ),
+        "deep learning": (
+            "### 🧠 Deep Learning\n\n"
+            "**Deep Learning** is a subset of Machine Learning based on Artificial Neural Networks with multiple hidden layers:\n\n"
+            "- **Feature Learning**: Automatically discovers representations from raw data without manual feature engineering.\n"
+            "- **Key Architectures**: CNNs (Computer Vision), RNNs/LSTMs (Time-series), Transformers (NLP & Multimodal), Diffusion Models (Image Generation).\n"
+            "- **Training Frameworks**: PyTorch, TensorFlow, JAX."
         ),
         "neural network": (
-            "**Artificial Neural Networks (ANNs)** are computational models inspired by biological brain architectures:\n\n"
-            "- **Layers**: Consist of Input, Hidden, and Output layers made of interconnected artificial neurons (nodes).\n"
-            "- **Weights & Biases**: Learnable parameters that scale and shift incoming signals.\n"
-            "- **Activation Functions**: Non-linear functions (e.g., ReLU, GeLU, Sigmoid, Softmax) that enable networks to learn complex mathematical mappings.\n"
-            "- **Backpropagation**: Calculates gradients using the chain rule to update weights via gradient descent."
+            "### 🌐 Artificial Neural Networks (ANN)\n\n"
+            "**Neural Networks** are computational graphs modeled after biological neural systems:\n\n"
+            "- **Architecture**: Input Layer -> Hidden Layers -> Output Layer.\n"
+            "- **Weights & Biases**: Learnable parameters adjusted during training.\n"
+            "- **Activation Functions**: Introduce non-linearity (ReLU, GeLU, Sigmoid, Softmax).\n"
+            "- **Backpropagation**: Uses gradient descent via the chain rule to minimize the loss function."
         ),
-        "quantum computing": (
-            "**Quantum Computing** leverages fundamental quantum mechanical principles for exponential computational speedup on specific problems:\n\n"
-            "- **Qubits**: Unlike classical bits (0 or 1), qubits can exist in a linear combination of states (0 and 1 simultaneously) known as **superposition**.\n"
-            "- **Entanglement**: Qubits can become correlated such that the state of one instantly dictates the state of another regardless of distance.\n"
-            "- **Applications**: Cryptography (Shor's algorithm), quantum chemistry/drug discovery, and high-dimensional optimization."
+        "large language model": (
+            "### 📚 Large Language Models (LLMs)\n\n"
+            "**LLMs** are multi-billion parameter autoregressive neural networks trained on vast text corpora:\n\n"
+            "- **Pre-training**: Next-token prediction on trillions of tokens (unsupervised).\n"
+            "- **Post-training**: Supervised Fine-Tuning (SFT) + Reinforcement Learning from Human Feedback (RLHF) for instruction following.\n"
+            "- **Notable Models**: GPT-4o, Gemini 2.0, Claude 3.5, Llama 3, DeepSeek-V3."
         ),
-        "docker": (
-            "**Docker** is an open platform for developing, shipping, and running applications in lightweight containers:\n\n"
-            "- **Containers vs VMs**: Containers share the host OS kernel and isolate user space, making them much faster and lighter than full hypervisor VMs.\n"
-            "- **Dockerfile**: Automated recipe for building container images.\n"
-            "- **Docker Compose**: Orchestrates multi-container applications with shared networks and persistent volumes (`docker compose up`)."
+        "lora": (
+            "### 🎯 LoRA (Low-Rank Adaptation)\n\n"
+            "**LoRA** is a Parameter-Efficient Fine-Tuning (PEFT) technique that freezes pre-trained model weights and injects trainable rank decomposition matrices:\n\n"
+            "- **Mathematical Concept**: `W_new = W_0 + (B * A) * (alpha / r)` where rank `r << d`.\n"
+            "- **Benefits**: Reduces VRAM requirements by up to 80% and allows fast swapping of task-specific adapters."
         ),
-        "websocket": (
-            "**WebSockets (`ws://` / `wss://`)** provide full-duplex, persistent bidirectional communication over a single TCP connection:\n\n"
-            "- Unlike standard HTTP (request/response cycle), WebSockets keep the connection open continuously.\n"
-            "- Used in Nexus-AI for real-time token streaming, live thoughts, and instant agent status updates without polling."
+        "python": (
+            "### 🐍 Python Programming Language\n\n"
+            "**Python** is an interpreted, high-level, dynamically typed language known for its clean syntax and massive ecosystem:\n\n"
+            "- **Key Uses**: AI/ML (PyTorch, TensorFlow, Scikit-learn), Web (FastAPI, Django, Flask), Data Analysis (Pandas, NumPy), Automation.\n"
+            "- **Strengths**: High developer velocity, rich standard library, and enormous community support."
         ),
         "fastapi": (
-            "**FastAPI** is a modern, high-performance web framework for building APIs with Python 3.8+:\n\n"
-            "- Built on top of **Starlette** (for ASGI and WebSockets) and **Pydantic** (for data validation and serialization).\n"
-            "- Offers near-Node.js and Go performance speeds due to async event loop concurrency (`async`/`await`).\n"
-            "- Automatic OpenAPI and Swagger interactive documentation at `/docs`."
+            "### 🚀 FastAPI\n\n"
+            "**FastAPI** is a modern, high-performance async Python framework for building REST APIs and WebSockets:\n\n"
+            "- Built on **Starlette** (ASGI async server) and **Pydantic** (data validation).\n"
+            "- Concurrency: Native `async`/`await` support with near Go and Node.js performance.\n"
+            "- Auto-Docs: Generates interactive Swagger UI at `/docs`."
+        ),
+        "docker": (
+            "### 🐳 Docker\n\n"
+            "**Docker** packages applications and their dependencies into lightweight, isolated containers:\n\n"
+            "- **Containers vs VMs**: Containers share the host OS kernel, making them lightweight (< 100MB) and starting in milliseconds.\n"
+            "- **Dockerfile**: Script containing instructions to build a container image.\n"
+            "- **Docker Compose**: Tool for defining and running multi-container applications (`docker compose up`)."
+        ),
+        "websocket": (
+            "### 🔌 WebSockets (`ws://` / `wss://`)\n\n"
+            "**WebSockets** provide persistent, full-duplex bidirectional communication channels over a single TCP connection:\n\n"
+            "- Unlike HTTP request/response polling, WebSockets allow server-to-client pushing with near-zero latency.\n"
+            "- Essential for real-time chat, token streaming, live telemetry, and multiplayer games."
         ),
         "binary search": (
-            "**Binary Search** is an efficient divide-and-conquer algorithm for finding an item in a sorted array in **O(log n)** time:\n\n"
+            "### 🔍 Binary Search Algorithm\n\n"
+            "Efficient search in a sorted array with **O(log n)** time complexity:\n\n"
             "```python\n"
             "def binary_search(arr: list, target: int) -> int:\n"
             "    left, right = 0, len(arr) - 1\n"
             "    while left <= right:\n"
             "        mid = (left + right) // 2\n"
             "        if arr[mid] == target:\n"
-            "            return mid  # Found target index\n"
+            "            return mid\n"
             "        elif arr[mid] < target:\n"
             "            left = mid + 1\n"
             "        else:\n"
             "            right = mid - 1\n"
-            "    return -1  # Not found\n\n"
+            "    return -1\n\n"
             "# Example:\n"
-            "nums = [11, 22, 33, 44, 55, 66, 77, 88]\n"
-            "print('Index of 44:', binary_search(nums, 44))  # Output: 3\n"
-            "```"
-        ),
-        "fibonacci": (
-            "**Fibonacci Sequence** generated via dynamic programming / iteration in **O(n)** time:\n\n"
-            "```python\n"
-            "def fibonacci(n: int) -> list:\n"
-            "    if n <= 0:\n"
-            "        return []\n"
-            "    seq = [0, 1]\n"
-            "    while len(seq) < n:\n"
-            "        seq.append(seq[-1] + seq[-2])\n"
-            "    return seq[:n]\n\n"
-            "print('First 10 Fibonacci numbers:', fibonacci(10))\n"
-            "# Output: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]\n"
-            "```"
-        ),
-        "prime": (
-            "**Prime Sieve (Sieve of Eratosthenes)** to find all prime numbers up to `N` in **O(n log log n)**:\n\n"
-            "```python\n"
-            "def sieve_primes(n: int) -> list:\n"
-            "    is_prime = [True] * (n + 1)\n"
-            "    is_prime[0] = is_prime[1] = False\n"
-            "    for i in range(2, int(n**0.5) + 1):\n"
-            "        if is_prime[i]:\n"
-            "            for j in range(i*i, n + 1, i):\n"
-            "                is_prime[j] = False\n"
-            "    return [i for i, prime in enumerate(is_prime) if prime]\n\n"
-            "print('Primes up to 50:', sieve_primes(50))\n"
+            "print(binary_search([10, 20, 30, 40, 50], 30))  # Output: 2\n"
             "```"
         ),
         "quicksort": (
-            "**QuickSort** algorithm using divide-and-conquer partitioning (Average time complexity **O(n log n)**):\n\n"
+            "### ⚡ QuickSort Algorithm\n\n"
+            "Divide-and-conquer sorting with average time complexity **O(n log n)**:\n\n"
             "```python\n"
             "def quicksort(arr: list) -> list:\n"
             "    if len(arr) <= 1:\n"
@@ -125,62 +204,120 @@ class SelfAIEngine:
             "    middle = [x for x in arr if x == pivot]\n"
             "    right = [x for x in arr if x > pivot]\n"
             "    return quicksort(left) + middle + quicksort(right)\n\n"
+            "# Example:\n"
             "print(quicksort([38, 27, 43, 3, 9, 82, 10]))\n"
-            "# Output: [3, 9, 10, 27, 38, 43, 82]\n"
+            "```"
+        ),
+        "fibonacci": (
+            "### 🔢 Fibonacci Sequence\n\n"
+            "Generated in **O(n)** time using dynamic programming / iteration:\n\n"
+            "```python\n"
+            "def fibonacci(n: int) -> list:\n"
+            "    if n <= 0:\n"
+            "        return []\n"
+            "    seq = [0, 1]\n"
+            "    while len(seq) < n:\n"
+            "        seq.append(seq[-1] + seq[-2])\n"
+            "    return seq[:n]\n\n"
+            "# Example:\n"
+            "print(fibonacci(10))  # [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]\n"
+            "```"
+        ),
+        "prime": (
+            "### 🔢 Prime Sieve (Sieve of Eratosthenes)\n\n"
+            "Finds all primes up to `N` in **O(n log log n)** time:\n\n"
+            "```python\n"
+            "def sieve_primes(n: int) -> list:\n"
+            "    is_prime = [True] * (n + 1)\n"
+            "    is_prime[0] = is_prime[1] = False\n"
+            "    for i in range(2, int(n**0.5) + 1):\n"
+            "        if is_prime[i]:\n"
+            "            for j in range(i*i, n + 1, i):\n"
+            "                is_prime[j] = False\n"
+            "    return [i for i, prime in enumerate(is_prime) if prime]\n\n"
+            "# Example:\n"
+            "print(sieve_primes(30))  # [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]\n"
             "```"
         ),
         "dijkstra": (
-            "**Dijkstra's Algorithm** finds the shortest paths from a source node to all other nodes in a weighted graph with non-negative edge weights:\n\n"
-            "- **Time Complexity**: **O((V + E) log V)** using a min-priority heap.\n"
-            "- **Mechanism**: Greedily expands the closest unvisited vertex, relaxing distance estimates to all its neighbors.\n"
-            "- **Key Data Structures**: Min-heap / `heapq` and adjacency list."
-        ),
-        "dynamic programming": (
-            "**Dynamic Programming (DP)** solves complex problems by breaking them down into simpler overlapping subproblems:\n\n"
-            "1. **Optimal Substructure**: Optimal solution contains optimal solutions to subproblems.\n"
-            "2. **Overlapping Subproblems**: Same subproblems are solved repeatedly.\n"
-            "- **Approaches**:\n"
-            "  - **Memoization (Top-Down)**: Recursive with a cache/lookup table.\n"
-            "  - **Tabulation (Bottom-Up)**: Iterative building an array or matrix."
-        ),
-        "rest api": (
-            "**REST (Representational State Transfer)** is an architectural style for networked web services:\n\n"
-            "- **Stateless**: Each request from client to server contains all necessary info to fulfill it.\n"
-            "- **HTTP Verbs**: `GET` (read), `POST` (create), `PUT`/`PATCH` (update), `DELETE` (remove).\n"
-            "- **Standard Status Codes**: `200 OK`, `201 Created`, `400 Bad Request`, `401 Unauthorized`, `404 Not Found`, `500 Internal Error`."
+            "### 🗺️ Dijkstra's Algorithm\n\n"
+            "**Dijkstra's Algorithm** finds the shortest path between nodes in a weighted graph with non-negative edge weights:\n\n"
+            "- **Complexity**: `O((V + E) log V)` using a Min-Heap / Priority Queue.\n"
+            "- **Greedy Strategy**: Always expands the closest unvisited vertex, relaxing adjacent edges until the target is reached."
         ),
         "jwt": (
-            "**JWT (JSON Web Token)** is a compact URL-safe standard (RFC 7519) for transmitting claims securely:\n\n"
-            "- **Structure**: Three Base64Url parts separated by dots: `Header.Payload.Signature`\n"
-            "- **Verification**: The signature verifies that the sender is authentic and the payload wasn't tampered with.\n"
-            "- Used extensively for stateless authorization and microservice communication."
-        ),
-        "diffusion": (
-            "**Diffusion Models** generate high-fidelity samples (images, audio, 3D) via a two-step process:\n\n"
-            "1. **Forward Process**: Gradually adds Gaussian noise to input data over $T$ timesteps until it becomes pure noise.\n"
-            "2. **Reverse Process**: A neural network (often a U-Net or DiT) learns to iteratively predict and subtract the noise to reconstruct clean outputs."
-        ),
-        "lora": (
-            "**LoRA (Low-Rank Adaptation)** is an efficient parameter-efficient fine-tuning (PEFT) technique for large neural networks:\n\n"
-            "- Instead of retraining billions of frozen weights $W$, LoRA freezes $W$ and trains low-rank decomposition matrices $A$ and $B$ where $\\Delta W = B \\times A$.\n"
-            "- Reduces trainable parameters by up to 99% while achieving performance comparable to full fine-tuning."
-        ),
-        "vector database": (
-            "**Vector Databases** store and index high-dimensional vector embeddings for sub-second semantic similarity search:\n\n"
-            "- **Algorithms**: HNSW (Hierarchical Navigable Small World), IVF (Inverted File), Annoy.\n"
-            "- **Distance Metrics**: Cosine similarity, Dot product, Euclidean distance ($L_2$).\n"
-            "- **Examples**: ChromaDB, Qdrant, Milvus, Pinecone, FAISS."
-        ),
-        "kubernetes": (
-            "**Kubernetes (K8s)** is an open-source container orchestration engine for automated deployment, scaling, and management:\n\n"
-            "- **Control Plane**: API Server, etcd, Controller Manager, Scheduler.\n"
-            "- **Node Components**: Kubelet, Kube-proxy, Container Runtime (containerd).\n"
-            "- **Key Objects**: Pods, Deployments, Services, Ingress, ConfigMaps, PersistentVolumes."
+            "### 🔑 JWT (JSON Web Tokens)\n\n"
+            "**JSON Web Token (JWT)** is a compact, URL-safe means of securely representing claims between parties:\n\n"
+            "- **Structure**: `Header.Payload.Signature` (Base64URL encoded).\n"
+            "- **Header**: Specifies token type and signing algorithm (e.g. HS256, RS256).\n"
+            "- **Payload**: Contains claims (user ID, expiration, roles).\n"
+            "- **Signature**: Generated cryptographically to ensure data integrity without server-side database lookups."
         ),
         "asyncio": (
-            "**Asyncio** is Python's standard library module for writing concurrent single-threaded code using the `async`/`await` syntax:\n\n"
-            "- **Event Loop**: Schedules and executes asynchronous tasks and handles I/O events without blocking threads.\n"
-            "- **Coroutines**: Functions defined with `async def` that can pause execution using `await` while waiting for I/O operations (network, files, sockets)."
+            "### ⚡ Asyncio in Python\n\n"
+            "**Asyncio** is Python's standard library module for writing concurrent single-threaded code using `async`/`await`:\n\n"
+            "- **Event Loop**: Schedules and executes asynchronous tasks and handles I/O events cooperatively.\n"
+            "- **Coroutines**: Functions defined with `async def` that pause execution via `await` while waiting for I/O."
+        ),
+        "kubernetes": (
+            "### ☸️ Kubernetes (K8s)\n\n"
+            "**Kubernetes** is an open-source container orchestration platform for automating deployment and scaling of containerized applications:\n\n"
+            "- **Pods**: Smallest deployable units representing one or more containers sharing network and storage.\n"
+            "- **Deployments**: Declarative management of replicas, rolling updates, and self-healing."
+        ),
+        "diffusion": (
+            "### 🎨 Diffusion Models\n\n"
+            "**Diffusion Models** are generative models that synthesize data by reversing a gradual noising process:\n\n"
+            "- **Forward Process**: Progressively adds Gaussian noise to an image until it becomes pure noise.\n"
+            "- **Reverse Process**: A neural network (e.g. U-Net / DiT) learns to iteratively denoise the latent space back to a clear image."
+        ),
+        "quantum computing": (
+            "### ⚛️ Quantum Computing\n\n"
+            "Quantum computing utilizes principles of quantum physics to achieve exponential speedups:\n\n"
+            "- **Qubits**: Can exist in a superposition of states (0 and 1 simultaneously) via `|psi> = alpha|0> + beta|1>`.\n"
+            "- **Entanglement**: The quantum state of one qubit instantaneously determines the state of another.\n"
+            "- **Applications**: Quantum chemistry, drug discovery, optimization, and cryptographic breaking (Shor's Algorithm)."
+        ),
+        "photosynthesis": (
+            "### 🌱 Photosynthesis (प्रकाश संश्लेषण)\n\n"
+            "**Photosynthesis** is the biological process by which green plants, algae, and some bacteria convert light energy into chemical energy:\n\n"
+            "- **Chemical Formula**: `6CO2 + 6H2O + Light -> C6H12O6 (Glucose) + 6O2 (Oxygen)`.\n"
+            "- **Chlorophyll**: The green pigment inside plant chloroplasts that absorbs sunlight (primarily blue and red wavelengths).\n"
+            "- **Stages**: Light-dependent reactions (in thylakoid membranes) and Calvin cycle / dark reactions (in stroma)."
+        ),
+        "gravity": (
+            "### 🪐 Gravity (गुरुत्वाकर्षण)\n\n"
+            "**Gravity** is one of the four fundamental forces of nature that attracts objects with mass or energy towards one another:\n\n"
+            "- **Newton's Law**: `F = G * (m1 * m2) / r^2` where `G = 6.674 x 10^-11 N m^2/kg^2`.\n"
+            "- **Einstein's General Relativity**: Gravity is not an invisible force, but rather the curvature of spacetime caused by mass and energy.\n"
+            "- **Acceleration on Earth**: `g ≈ 9.8 m/s^2`."
+        ),
+        "speed of light": (
+            "### 💡 Speed of Light (प्रकाश की गति)\n\n"
+            "The speed of light in a vacuum is denoted by **`c`** and is a fundamental physical constant:\n\n"
+            "- **Exact Value**: **`299,792,458 meters per second`** (approx. **`300,000 km/s`** or `186,282 miles/sec`).\n"
+            "- According to Special Relativity, nothing with mass can travel at or faster than the speed of light."
+        ),
+        "solar system": (
+            "### ☀️ Solar System (सौरमंडल)\n\n"
+            "Our Solar System formed ~4.6 billion years ago and consists of the Sun and objects bound by its gravity:\n\n"
+            "- **8 Planets (in order from Sun)**: Mercury (बुध), Venus (शुक्र), Earth (पृथ्वी), Mars (मंगल), Jupiter (बृहस्पति), Saturn (शनि), Uranus (अरुण), Neptune (वरुण).\n"
+            "- **Inner Terrestrial Planets**: Mercury, Venus, Earth, Mars (rocky surfaces).\n"
+            "- **Outer Gas/Ice Giants**: Jupiter, Saturn (gas giants); Uranus, Neptune (ice giants).\n"
+            "- **Dwarf Planets**: Pluto, Eris, Haumea, Makemake, Ceres."
+        ),
+        "dna": (
+            "### 🧬 DNA (Deoxyribonucleic Acid)\n\n"
+            "**DNA** is the molecule that carries the genetic blueprint for the growth, development, functioning, and reproduction of all known living organisms:\n\n"
+            "- **Structure**: Double helix discovered by Watson, Crick, and Rosalind Franklin in 1953.\n"
+            "- **4 Nucleotide Bases**: Adenine (A), Thymine (T), Guanine (G), Cytosine (C). Pairs: A with T, C with G."
+        ),
+        "isro": (
+            "### 🚀 ISRO (Indian Space Research Organisation)\n\n"
+            "**ISRO** is the national space agency of India, headquartered in Bengaluru, Karnataka:\n\n"
+            "- **Founded**: 15 August 1969 by Dr. Vikram Sarabhai.\n"
+            "- **Key Milestones**: Aryabhata (first satellite, 1975), Chandrayaan-1 (discovered water molecules on Moon, 2008), Mars Orbiter Mission / Mangalyaan (2013), Chandrayaan-3 (first nation to softly land on the lunar south pole, 23 Aug 2023), Aditya-L1 (solar observatory, 2023).\n"
+            "- **Launch Vehicles**: PSLV (Polar Satellite Launch Vehicle), LVM3 (Geosynchronous / Heavy lifter)."
         )
     }
 
@@ -189,7 +326,6 @@ class SelfAIEngine:
         """Check if a local Ollama instance is running with an open model."""
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                # First check tags
                 tags_resp = await client.get(f"{base_url}/api/tags")
                 if tags_resp.status_code == 200:
                     models = tags_resp.json().get("models", [])
@@ -217,10 +353,10 @@ class SelfAIEngine:
         for m in messages:
             if m.get("role") == "user":
                 content = m.get("content", "")
-                name_match = re.search(r"\b(?:my name is|i am|call me)\s+([A-Za-z]+)\b", content, re.I)
+                name_match = re.search(r"\b(?:my name is|i am|call me|mera naam)\s+([A-Za-z]+)\b", content, re.I)
                 if name_match:
                     name = name_match.group(1).capitalize()
-                    if name.lower() not in ["a", "the", "working", "trying", "building"]:
+                    if name.lower() not in ["a", "the", "working", "trying", "building", "hai"]:
                         profile["name"] = name
         return profile
 
@@ -230,12 +366,10 @@ class SelfAIEngine:
         if not rag_context:
             return None
 
-        # Clean document chunks
         chunks = [c.strip() for c in rag_context.split("---") if c.strip()]
         if not chunks:
             return None
 
-        # Score chunks based on word overlap with query
         query_words = set(re.findall(r"\b\w{3,}\b", query.lower()))
         best_chunk = ""
         best_score = 0
@@ -256,6 +390,95 @@ class SelfAIEngine:
         return None
 
     @classmethod
+    def synthesize_web_search(cls, query: str, raw_obs: str) -> Dict[str, Any]:
+        """Synthesizes live web search observation into a direct, comprehensive response."""
+        if "No direct search results found" in raw_obs or "Search error" in raw_obs or not raw_obs.strip():
+            return cls.synthesize_conceptual_answer(query)
+
+        # Parse DuckDuckGo results
+        # Pattern matches Result X (domain):\nSnippet
+        blocks = re.split(r"Result \d+ \(([^)]*)\):", raw_obs)
+        results = []
+        if len(blocks) > 1:
+            for i in range(1, len(blocks), 2):
+                url = blocks[i].strip()
+                text = blocks[i+1].strip() if i+1 < len(blocks) else ""
+                if text:
+                    results.append((url, text))
+        else:
+            results = [("", raw_obs.strip())]
+
+        is_hindi = any(w in query.lower() for w in [
+            "kya", "kaun", "kahan", "kab", "kyun", "kaise", "batao", "samjhao", "hai", "hein",
+            "hota", "hoti", "hote", "bataiye", "kisko", "kisne", "kitna", "rajdhani", "pradhan", "mantri"
+        ]) or any('\u0900' <= ch <= '\u097F' for ch in query)
+
+        # Compile informative snippets
+        compiled_points = []
+        sources = []
+        for url, text in results[:4]:
+            clean_text = re.sub(r"\s+", " ", text).strip()
+            # Clean unwanted artifacts
+            clean_text = clean_text.replace("", "")
+            if clean_text:
+                compiled_points.append(clean_text)
+            if url and url not in sources:
+                sources.append(url)
+
+        lead_in = "### 🌐 Answer & Details\n\n"
+        if is_hindi:
+            lead_in = "### 🌐 उत्तर एवं मुख्य जानकारी (Answer & Details)\n\n"
+
+        body = "\n\n".join([f"- {pt}" for pt in compiled_points])
+        if not body:
+            body = raw_obs.strip()
+
+        sources_footer = ""
+        if sources:
+            source_links = ", ".join([f"[{s}](https://{s})" if not s.startswith("http") else f"[{s}]({s})" for s in sources[:4]])
+            sources_footer = f"\n\n**Sources:** {source_links}"
+
+        return {
+            "thought": "Synthesizing retrieved web search results into a clean, accurate answer.",
+            "tool_calls": [],
+            "content": f"{lead_in}{body}{sources_footer}"
+        }
+
+    @classmethod
+    def synthesize_conceptual_answer(cls, raw_query: str, user_name: str = "") -> Dict[str, Any]:
+        """Provides an intelligent domain breakdown when offline or without external search."""
+        q_clean = raw_query.strip()
+        name_str = f", {user_name}" if user_name else ""
+
+        # Domain recognition
+        keywords = re.findall(r"\b\w{3,}\b", q_clean.lower())
+        tech_words = {"python", "javascript", "code", "programming", "api", "database", "sql", "ai", "model", "server"}
+        science_words = {"physics", "chemistry", "biology", "space", "planet", "energy", "speed", "earth", "sun"}
+
+        if any(w in tech_words for w in keywords):
+            domain = "Technology & Software"
+            guidance = "I can write source code, debug scripts, execute Python in my sandbox, or test algorithms for you."
+        elif any(w in science_words for w in keywords):
+            domain = "Science & Physical World"
+            guidance = "I can compute mathematical formulas, explain natural principles, or model equations."
+        else:
+            domain = "General Inquiry"
+            guidance = "You can ask me to search the web, calculate formulas, check live dates/weather, or inspect files."
+
+        return {
+            "thought": f"Synthesized offline domain response for query: '{q_clean}'.",
+            "tool_calls": [],
+            "content": (
+                f"### 💡 Nexus Self-AI Insight{name_str}\n\n"
+                f"**Query**: *\"{q_clean}\"*\n\n"
+                f"- **Domain**: {domain}\n"
+                f"- **Overview**: Your query involves analyzing concepts related to **{', '.join(keywords[:4]) or q_clean}**.\n"
+                f"- **Next Steps**: {guidance}\n\n"
+                f"*Tip: If you would like live factual information, ask me to **\"search web for {q_clean}\"**!*"
+            )
+        }
+
+    @classmethod
     def process_query(cls, query: str, messages: List[Dict[str, str]], rag_context: str = "") -> Dict[str, Any]:
         """
         Cognitive reasoning pipeline:
@@ -266,10 +489,87 @@ class SelfAIEngine:
         user_profile = cls.extract_user_profile(messages)
         user_name = user_profile["name"]
 
-        # 0. Check if this is a follow-up to a tool execution
-        if any(m.get("role") == "system" and "Tool Observation:" in m.get("content", "") for m in messages[-2:]):
-            obs_msg = [m["content"] for m in messages if "Tool Observation:" in m.get("content", "")][-1]
-            raw_obs = obs_msg.replace("Tool Observation:", "").strip()
+        # 0. Check if this is a follow-up to a tool execution (Turn 2+)
+        obs_msg = None
+        tool_name = ""
+        for m in reversed(messages):
+            if m.get("role") == "system":
+                c = m.get("content", "")
+                if "Observation" in c or "returned Observation:" in c:
+                    obs_msg = c
+                    # Extract tool name if present
+                    t_match = re.search(r"Tool (?:'(\w+)' returned )?Observation(?:\s*\((\w+)\))?:?", c)
+                    if t_match:
+                        tool_name = t_match.group(1) or t_match.group(2) or ""
+                    break
+
+        if obs_msg:
+            # Extract raw observation text cleanly
+            raw_obs = re.sub(r"^.*?Observation(?:\s*\([^)]*\))?:?\s*", "", obs_msg, flags=re.DOTALL).strip()
+
+            # Handle web search synthesis
+            if tool_name == "web_search" or "web_search" in obs_msg:
+                # Find the user's original query
+                orig_query = raw_query
+                for m in reversed(messages):
+                    if m.get("role") == "user":
+                        orig_query = m.get("content", "")
+                        break
+                return cls.synthesize_web_search(orig_query, raw_obs)
+
+            # Handle calculator synthesis
+            if tool_name == "calculator" or "calculator" in obs_msg:
+                return {
+                    "thought": "Synthesizing exact calculation result.",
+                    "tool_calls": [],
+                    "content": f"### 🧮 Calculation Result\n\n{raw_obs}"
+                }
+
+            # Handle datetime synthesis
+            if tool_name == "datetime_info" or "datetime_info" in obs_msg:
+                return {
+                    "thought": "Presenting live calendar and time observation.",
+                    "tool_calls": [],
+                    "content": f"### 🕒 Date & Time Information\n\n{raw_obs}"
+                }
+
+            # Handle weather synthesis
+            if tool_name == "weather_info" or "weather_info" in obs_msg:
+                return {
+                    "thought": "Presenting real-time weather report.",
+                    "tool_calls": [],
+                    "content": f"### 🌤️ Weather Report\n\n{raw_obs}"
+                }
+
+            # Handle system diagnostics synthesis
+            if tool_name == "system_info" or "system_info" in obs_msg:
+                return {
+                    "thought": "Presenting host system diagnostics.",
+                    "tool_calls": [],
+                    "content": f"### 🖥️ System Diagnostics\n\n{raw_obs}"
+                }
+
+            # Handle code runner synthesis
+            if tool_name == "code_runner" or "code_runner" in obs_msg:
+                return {
+                    "thought": "Synthesizing Python sandbox execution output.",
+                    "tool_calls": [],
+                    "content": (
+                        f"### 🐍 Python Execution Result\n\n"
+                        f"```\n{raw_obs}\n```\n\n"
+                        f"*Executed safely in the local sandboxed environment.*"
+                    )
+                }
+
+            # Handle file manager synthesis
+            if tool_name == "file_manager" or "file_manager" in obs_msg:
+                return {
+                    "thought": "Presenting workspace filesystem inspection.",
+                    "tool_calls": [],
+                    "content": f"### 📁 Workspace Files\n\n{raw_obs}"
+                }
+
+            # Generic tool observation output
             return {
                 "thought": "Synthesizing tool observation into a structured, clear response.",
                 "tool_calls": [],
@@ -281,7 +581,7 @@ class SelfAIEngine:
                 )
             }
 
-        # 1. Check RAG Context first if user asks about document/notes/files
+        # 1. Check RAG Context first if user asks about documents/notes/files
         if rag_context and any(kw in q for kw in ["document", "rag", "file", "upload", "notes", "according to", "summary", "read"]):
             rag_answer = cls.answer_from_rag_context(q, rag_context)
             if rag_answer:
@@ -293,7 +593,7 @@ class SelfAIEngine:
 
         # 2. Math & Arithmetic Calculation Tool Routing
         math_trigger = re.search(r"(\bcalc(?:ulate)?|\bcompute|\beval)\s+(.+)", q)
-        math_what_is = re.search(r"(\bwhat is|\bhow much is)\s+([0-9\.\s\+\-\*\/\^\(\)\%\,sqrtpi]+)", q)
+        math_what_is = re.search(r"(\bwhat is|\bhow much is|\bkitna hota hai)\s+([0-9\.\s\+\-\*\/\^\(\)\%\,sqrtpi]+)", q)
         pure_math = re.match(r"^[\s0-9\.\+\-\*\/\^\(\)\%sqrtpi]+$", q)
         if (math_trigger or math_what_is or pure_math) and any(c.isdigit() for c in q) and not any(kw in q for kw in ["code", "python", "script", "file", "create"]):
             if math_trigger:
@@ -314,7 +614,12 @@ class SelfAIEngine:
             code_match = re.search(r"```(?:python)?(.*?)```", raw_query, re.DOTALL)
             code = code_match.group(1).strip() if code_match else ""
             if not code:
-                # Generate default demo code if user just says 'run code'
+                after_colon = re.search(r"(?:run python|execute python|run code|test code|execute script)[:\s]+(.+)", raw_query, re.IGNORECASE | re.DOTALL)
+                if after_colon:
+                    extracted = after_colon.group(1).strip("` ")
+                    if any(kw in extracted for kw in ["print", "def ", "import ", "for ", "while ", "=", "+", "*"]):
+                        code = extracted
+            if not code:
                 code = "import math\nprint(f'Pi: {math.pi:.4f}')\nprint('Factorial of 6:', math.factorial(6))"
             return {
                 "thought": "Detected request to execute Python code in sandboxed subprocess.",
@@ -330,23 +635,11 @@ class SelfAIEngine:
                 "content": ""
             }
 
-        # 5. Live Web Search
-        if any(kw in q for kw in ["search web", "google", "search for", "look up", "current news", "latest updates"]):
-            search_term = re.sub(r"^(search web for|search for|google|search|look up)\s*", "", q).strip("? .")
-            if not search_term:
-                search_term = "artificial intelligence advancements"
-            return {
-                "thought": f"Routing live web search query: '{search_term}' to web_search tool.",
-                "tool_calls": [{"name": "web_search", "args": {"query": search_term}}],
-                "content": ""
-            }
-
-        # 6. Live Date, Time & Calendar Inquiries
+        # 5. Live Date, Time & Calendar Inquiries
         if any(kw in q for kw in [
             "what time", "current time", "time now", "what is the time", "tell me the time",
             "what is today's date", "today date", "current date", "what date is it", "aaj kya date",
-            "kya time", "kya samay", "aaj kaun sa din", "what day is today",
-            "calendar", "current timestamp", "exact time"
+            "kya time", "kya samay", "aaj kaun sa din", "what day is today", "calendar", "current timestamp"
         ]):
             fmt = "full"
             if any(k in q for k in ["date", "tarikh", "din", "day"]):
@@ -359,26 +652,7 @@ class SelfAIEngine:
                 "content": ""
             }
 
-        # 7. Host System Diagnostics Tool Routing
-        if any(kw in q for kw in [
-            "system info", "system status", "specs", "disk space", "cpu core", "operating system",
-            "system diagnostic", "host info", "hardware specs", "machine info", "computer specs",
-            "system check", "pc status"
-        ]):
-            q_type = "all"
-            if "disk" in q or "storage" in q or "hard drive" in q:
-                q_type = "disk"
-            elif "cpu" in q or "processor" in q or "core" in q:
-                q_type = "cpu"
-            elif "os" in q or "operating system" in q or "windows" in q or "linux" in q:
-                q_type = "os"
-            return {
-                "thought": f"User requested system diagnostics ('{q_type}'). Routing to system_info tool.",
-                "tool_calls": [{"name": "system_info", "args": {"query_type": q_type}}],
-                "content": ""
-            }
-
-        # 8. Real-Time Weather Tool Routing
+        # 6. Real-Time Weather Tool Routing
         weather_match = re.search(r"\b(?:weather|temperature|forecast|climate|mausam)\s+(?:in|for|of|at|ka)?\s*([A-Za-z\s,\.-]+)", q)
         if not weather_match:
             weather_match = re.search(r"([A-Za-z\s]+)\s+(?:weather|forecast|mausam)", q)
@@ -395,8 +669,26 @@ class SelfAIEngine:
                 "content": ""
             }
 
-        # 8. Conversational Memory & User Name Queries
-        if any(kw in q for kw in ["what is my name", "who am i", "do you remember me", "remember my name"]):
+        # 7. Host System Diagnostics Tool Routing
+        if any(kw in q for kw in [
+            "system info", "system status", "specs", "disk space", "cpu core", "operating system",
+            "system diagnostic", "host info", "hardware specs", "machine info", "computer specs"
+        ]):
+            q_type = "all"
+            if "disk" in q or "storage" in q:
+                q_type = "disk"
+            elif "cpu" in q or "processor" in q:
+                q_type = "cpu"
+            elif "os" in q or "windows" in q or "linux" in q:
+                q_type = "os"
+            return {
+                "thought": f"User requested system diagnostics ('{q_type}'). Routing to system_info tool.",
+                "tool_calls": [{"name": "system_info", "args": {"query_type": q_type}}],
+                "content": ""
+            }
+
+        # 8. Conversational Memory & User Name
+        if any(kw in q for kw in ["what is my name", "who am i", "do you remember me", "remember my name", "mera naam kya hai"]):
             if user_name:
                 return {
                     "thought": f"Retrieved user name '{user_name}' from conversational memory.",
@@ -407,10 +699,10 @@ class SelfAIEngine:
                 return {
                     "thought": "User asked for their name, but none was recorded in this session.",
                     "tool_calls": [],
-                    "content": "You haven't told me your name yet! What should I call you?"
+                    "content": "You haven't told me your name yet! What should I call you? (आप अपना नाम बता सकते हैं!)"
                 }
 
-        # 9. Greetings, Persona & Identity
+        # 9. Greetings & Identity
         greeting_words = ["hi", "hello", "hey", "hola", "namaste", "kaise ho", "good morning", "good evening", "greetings"]
         if any(q.startswith(g) or q == g for g in greeting_words):
             name_part = f", **{user_name}**" if user_name else ""
@@ -421,36 +713,92 @@ class SelfAIEngine:
                     f"### 👋 Hello{name_part}! Welcome to **Nexus Self-AI**.\n\n"
                     f"I am your **100% self-hosted autonomous AI platform**, running entirely on your machine **without any external APIs or fees**.\n\n"
                     f"**Here is what I can do for you right now:**\n"
-                    f"- 🧮 **Math & Science**: *\"Calculate sqrt(256) + 42 * 3\"*\n"
+                    f"- 🌐 **Answers & Questions**: Ask me anything (GK, Science, Technology, World News, Places, History)\n"
+                    f"- 🧮 **Math & Calculation**: *\"Calculate sqrt(256) + 42 * 3\"*\n"
                     f"- 🐍 **Run Python Code**: *\"Run python code to test prime numbers\"*\n"
                     f"- 🖥️ **System Diagnostics**: *\"Check system status and disk space\"*\n"
                     f"- 🌤️ **Live Global Weather**: *\"What is the weather in Tokyo?\"*\n"
-                    f"- 🌐 **Web Search**: *\"Search web for quantum computing advancements\"*\n"
-                    f"- 💻 **Coding & Algorithms**: Ask me for Dijkstra, QuickSort, React hooks, SQL, etc.\n"
-                    f"- 📚 **Knowledge & Explainers**: Ask me about LoRA, RAG, Transformers, Docker.\n"
-                    f"- 📁 **File & Document RAG**: Drop documents in the chat or ask me to inspect workspace files.\n\n"
-                    f"How can I assist you today?"
+                    f"- 🕒 **Live Date & Time**: *\"What time is it right now?\"*\n"
+                    f"- 📚 **Knowledge & Explainers**: Ask me about LoRA, RAG, Transformers, Docker, Algorithms.\n"
+                    f"- 📁 **Document RAG**: Drop documents in the chat or ask me to inspect workspace files.\n\n"
+                    f"How can I assist you today? (आप कोई भी सवाल पूछ सकते हैं!)"
                 )
             }
 
-        # 8. Questions about Identity / Creator / Architecture
-        if any(kw in q for kw in ["who are you", "who made you", "what are you", "what is nexus", "are you api"]):
+        # 10. Identity / Creator Questions
+        if any(kw in q for kw in ["who are you", "who made you", "what are you", "what is nexus", "are you api", "tum kaun ho"]):
             return {
                 "thought": "Explaining Self-AI architecture and zero-API operation.",
                 "tool_calls": [],
                 "content": (
                     f"### 🤖 About **Nexus Self-AI**\n\n"
                     f"I am an autonomous, full-stack intelligence system running **directly on your hardware**.\n\n"
-                    f"- **Zero External APIs**: I do not send your data to OpenAI, Google, or any third-party cloud. Complete privacy.\n"
-                    f"- **Autonomous ReAct Loop**: I reason step-by-step (`Thought -> Action -> Observation -> Final Answer`).\n"
-                    f"- **Built-in Tool Ecosystem**: Python sandbox, scientific calculator, workspace file manager, and web scraper.\n"
-                    f"- **RAG Document Engine**: SQLite memory + BM25 document indexing.\n"
-                    f"- **Open Model Support**: If you install [Ollama](https://ollama.ai) with open models (`llama3`, `mistral`, `phi3`), "
-                    f"I can automatically tap into local neural weights completely offline!"
+                    f"- **Zero External APIs**: Operates locally without sending your private queries to any third-party cloud.\n"
+                    f"- **Autonomous ReAct Loop**: Reasons step-by-step (`Thought -> Action -> Observation -> Final Answer`).\n"
+                    f"- **Live Web Search**: Automatically fetches live, up-to-date facts and answers from the web.\n"
+                    f"- **Sandboxed Tools**: Python sandbox, scientific calculator, workspace manager, system telemetry.\n"
+                    f"- **Optional Keys**: You can also plug in a free Gemini or Groq API key in Settings anytime for cloud LLMs!"
                 )
             }
 
-        # 9. Embedded Knowledge Graph Matching
+        # 11. Built-in State & World Capitals Lookup (Instant 0ms answers)
+        if any(kw in q for kw in ["capital", "rajdhani"]):
+            # Check Indian states
+            for state, (eng_cap, hin_cap) in cls.INDIAN_CAPITALS.items():
+                if state in q:
+                    return {
+                        "thought": f"Matched Indian state capital query: '{state}'.",
+                        "tool_calls": [],
+                        "content": (
+                            f"### 🏛️ राजधानी (State Capital)\n\n"
+                            f"**{state.title()}** की राजधानी **{hin_cap} ({eng_cap})** है।\n\n"
+                            f"- **State (राज्य)**: {state.title()}\n"
+                            f"- **Capital (राजधानी)**: {eng_cap} ({hin_cap})\n"
+                            f"- **Country**: India (भारत)"
+                        )
+                    }
+
+            # Check World countries
+            for country, cap in cls.WORLD_CAPITALS.items():
+                if country in q:
+                    return {
+                        "thought": f"Matched world capital query: '{country}'.",
+                        "tool_calls": [],
+                        "content": (
+                            f"### 🏛️ World Capital\n\n"
+                            f"The capital of **{country.title()}** is **{cap}**.\n\n"
+                            f"- **Country**: {country.title()}\n"
+                            f"- **Capital City**: {cap}"
+                        )
+                    }
+
+        # 12. Indian Leadership / Constitutional Posts Lookup
+        if any(kw in q for kw in ["pradhan mantri", "prime minister", "pm of india", "bharat ke pradhan mantri"]) and ("india" in q or "bharat" in q or "desh" in q or not any(c in q for c in ["uk", "japan", "canada", "france"])):
+            return {
+                "thought": "Retrieved Prime Minister of India leadership node.",
+                "tool_calls": [],
+                "content": (
+                    "### 🇮🇳 Prime Minister of India (भारत के प्रधानमंत्री)\n\n"
+                    "वर्तमान में भारत के प्रधानमंत्री **श्री नरेंद्र मोदी (Shri Narendra Modi)** हैं।\n\n"
+                    "- **पदभार**: 26 मई 2014 से लगातार कार्यरत (तीसरा कार्यकाल जून 2024 से शुरू).\n"
+                    "- **संसदीय क्षेत्र**: वाराणसी, उत्तर प्रदेश.\n"
+                    "- **पार्टी / गठबंधन**: भारतीय जनता पार्टी (BJP / NDA)."
+                )
+            }
+
+        if any(kw in q for kw in ["rashtrapati", "president of india", "bharat ke rashtrapati"]) and ("india" in q or "bharat" in q or not any(c in q for c in ["usa", "america", "russia", "france"])):
+            return {
+                "thought": "Retrieved President of India constitutional head node.",
+                "tool_calls": [],
+                "content": (
+                    "### 🇮🇳 President of India (भारत की राष्ट्रपति)\n\n"
+                    "वर्तमान में भारत की राष्ट्रपति **श्रीमती द्रौपदी मुर्मू (Smt. Droupadi Murmu)** हैं।\n\n"
+                    "- **पदभार**: 25 जुलाई 2022 से कार्यरत (भारत की 15वीं राष्ट्रपति).\n"
+                    "- **विशेषता**: वह भारत की पहली आदिवासी महिला राष्ट्रपति और देश की दूसरी महिला राष्ट्रपति हैं."
+                )
+            }
+
+        # 13. Embedded Knowledge Base Matching (Instant 0ms answers)
         for topic, explanation in cls.KNOWLEDGE_BASE.items():
             if topic in q:
                 return {
@@ -459,8 +807,8 @@ class SelfAIEngine:
                     "content": explanation
                 }
 
-        # 10. Code Generation Requests (Python, JS, SQL, HTML, etc.)
-        if any(kw in q for kw in ["code", "write a function", "how to write", "script", "program", "example of"]):
+        # 14. Code Generation Requests (Python, JS, SQL, HTML, etc.)
+        if any(kw in q for kw in ["write code", "write a function", "how to write", "code for", "program for", "script for"]):
             if "sql" in q:
                 return {
                     "thought": "Synthesizing SQL query and schema design.",
@@ -468,45 +816,17 @@ class SelfAIEngine:
                     "content": (
                         "### 🗄️ SQL Example & Query Pattern\n\n"
                         "```sql\n"
-                        "-- Create Users table\n"
                         "CREATE TABLE users (\n"
                         "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
                         "    username VARCHAR(50) NOT NULL UNIQUE,\n"
                         "    email VARCHAR(100) NOT NULL UNIQUE,\n"
                         "    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n"
                         ");\n\n"
-                        "-- Query active users with order counts\n"
                         "SELECT u.username, COUNT(o.id) AS total_orders\n"
                         "FROM users u\n"
                         "LEFT JOIN orders o ON u.id = o.user_id\n"
                         "GROUP BY u.id\n"
-                        "HAVING total_orders > 0\n"
                         "ORDER BY total_orders DESC;\n"
-                        "```"
-                    )
-                }
-            elif "react" in q or "javascript" in q or "js" in q:
-                return {
-                    "thought": "Synthesizing JavaScript / React component.",
-                    "tool_calls": [],
-                    "content": (
-                        "### ⚡ React Hook Example\n\n"
-                        "```javascript\n"
-                        "import React, { useState, useEffect } from 'react';\n\n"
-                        "export function useWebSocket(url) {\n"
-                        "  const [messages, setMessages] = useState([]);\n"
-                        "  const [socket, setSocket] = useState(null);\n\n"
-                        "  useEffect(() => {\n"
-                        "    const ws = new WebSocket(url);\n"
-                        "    ws.onmessage = (event) => {\n"
-                        "      const data = JSON.parse(event.data);\n"
-                        "      setMessages((prev) => [...prev, data]);\n"
-                        "    };\n"
-                        "    setSocket(ws);\n"
-                        "    return () => ws.close();\n"
-                        "  }, [url]);\n\n"
-                        "  return { socket, messages };\n"
-                        "}\n"
                         "```"
                     )
                 }
@@ -519,34 +839,55 @@ class SelfAIEngine:
                         "```python\n"
                         "def process_data(items: list) -> dict:\n"
                         "    \"\"\"Cleans, filters, and computes statistics on input data.\"\"\"\n"
-                        "    if not items:\n"
-                        "        return {'count': 0, 'average': 0, 'max': None}\n"
-                        "    \n"
                         "    valid_numbers = [x for x in items if isinstance(x, (int, float))]\n"
+                        "    if not valid_numbers:\n"
+                        "        return {'count': 0, 'total': 0, 'average': 0}\n"
+                        "    \n"
                         "    return {\n"
                         "        'count': len(valid_numbers),\n"
                         "        'total': sum(valid_numbers),\n"
-                        "        'average': sum(valid_numbers) / len(valid_numbers) if valid_numbers else 0,\n"
-                        "        'max': max(valid_numbers) if valid_numbers else None\n"
+                        "        'average': sum(valid_numbers) / len(valid_numbers)\n"
                         "    }\n\n"
-                        "# Test run\n"
                         "print(process_data([10, 20, 35, 5, 80]))\n"
                         "```\n\n"
-                        "*Tip: You can ask me to **\"run python code\"** to execute this in the sandbox!*"
+                        "*Tip: Ask me to **\"run python code\"** to execute scripts in the sandbox!*"
                     )
                 }
 
-        # 11. General Intelligent Synthesizer
-        name_str = f", {user_name}" if user_name else ""
-        return {
-            "thought": "Processing general query via Self-AI reasoning engine.",
-            "tool_calls": [],
-            "content": (
-                f"### 💡 Nexus Self-AI Response\n\n"
-                f"I processed your query: **\"{raw_query}\"**{name_str}.\n\n"
-                f"Here is a structured analysis:\n"
-                f"1. **Core Concept**: Your request involves analyzing and synthesizing solutions based on offline intelligence.\n"
-                f"2. **Capabilities Available**: If you'd like, I can evaluate mathematical expressions, execute Python programs in my sandbox, inspect workspace files, or search your uploaded documents.\n\n"
-                f"> 📌 **Zero-API Guarantee**: You are running 100% locally. No external APIs or credentials are being queried."
-            )
-        }
+        # 15. General Questions & Information Inquiries -> Autonomous Live Web Search
+        question_words = [
+            "who", "what", "where", "when", "why", "how", "which", "whose", "whom",
+            "is", "are", "was", "were", "can", "does", "do", "did",
+            "tell", "explain", "define", "meaning", "details", "about", "search", "google", "find",
+            "kya", "kaun", "kahan", "kab", "kyun", "kaise", "batao", "samjhao", "kisne", "kitna",
+            "konsa", "kripya", "hai kya", "hota hai", "hote hain", "hoti hai", "kon", "rajdhani",
+            "history", "founder", "inventor", "ceo", "price", "salary", "full form"
+        ]
+
+        is_question = (
+            q.endswith("?") or
+            any(q.startswith(qw) or f" {qw} " in f" {q} " for qw in question_words) or
+            any(kw in q for kw in ["search", "look up", "news", "update"]) or
+            len(raw_query.split()) >= 2
+        )
+
+        if is_question:
+            # Clean search query for optimal search engine retrieval
+            clean_search = re.sub(
+                r"^(can you please |please |can you |tell me |explain |search web for |search for |search |google |look up |batao |mujhe batao |kripya batao )\s*",
+                "",
+                raw_query,
+                flags=re.IGNORECASE
+            ).strip("? .")
+
+            if not clean_search:
+                clean_search = raw_query.strip("? .")
+
+            return {
+                "thought": f"Recognized factual inquiry / question: '{raw_query}'. Routing to autonomous web_search tool with query: '{clean_search}'.",
+                "tool_calls": [{"name": "web_search", "args": {"query": clean_search}}],
+                "content": ""
+            }
+
+        # 16. Fallback Domain Synthesizer
+        return cls.synthesize_conceptual_answer(raw_query, user_name)

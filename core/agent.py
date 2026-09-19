@@ -141,7 +141,7 @@ class AgentOrchestrator:
                     # Feed tool observation back to messages
                     formatted_messages.append({
                         "role": "system",
-                        "content": f"Tool '{t_name}' returned Observation:\n{tool_output}"
+                        "content": f"Tool Observation ({t_name}):\n{tool_output}"
                     })
 
                 # Continue the ReAct loop to allow model to interpret tool output
@@ -159,6 +159,11 @@ class AgentOrchestrator:
                 break
 
             break
+
+        # Fallback if model produced no content after turns
+        if not final_content:
+            final_content = "I have processed your query. Please let me know if you would like me to explain further or help with anything else!"
+            await event_callback({"type": "token", "data": final_content})
 
         # Save assistant message to memory store
         joined_thoughts = "\n\n".join(all_thoughts)
