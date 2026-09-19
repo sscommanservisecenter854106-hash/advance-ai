@@ -9,7 +9,7 @@ from fastapi import (
     UploadFile, File, HTTPException, Depends, Query, Header
 )
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -21,6 +21,8 @@ import tools.code_runner
 import tools.web_search
 import tools.file_manager
 import tools.calculator
+import tools.system_info
+import tools.weather_info
 
 from memory.store import MemoryStore
 from memory.rag import DocumentRAG
@@ -36,6 +38,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http: ws: wss: data: blob:; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "img-src 'self' data: blob: https:; "
+        "connect-src 'self' ws: wss: http: https:;"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    return response
 
 # Initialize core instances
 memory_store = MemoryStore()
@@ -104,6 +122,11 @@ async def serve_index():
     if index_file.exists():
         return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>Nexus-AI Frontend is loading...</h1>")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%236366f1" stroke-width="2.2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>'
+    return Response(content=svg, media_type="image/svg+xml")
 
 @app.get("/api/status")
 async def get_status():

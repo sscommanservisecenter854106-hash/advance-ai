@@ -128,6 +128,59 @@ class SelfAIEngine:
             "print(quicksort([38, 27, 43, 3, 9, 82, 10]))\n"
             "# Output: [3, 9, 10, 27, 38, 43, 82]\n"
             "```"
+        ),
+        "dijkstra": (
+            "**Dijkstra's Algorithm** finds the shortest paths from a source node to all other nodes in a weighted graph with non-negative edge weights:\n\n"
+            "- **Time Complexity**: **O((V + E) log V)** using a min-priority heap.\n"
+            "- **Mechanism**: Greedily expands the closest unvisited vertex, relaxing distance estimates to all its neighbors.\n"
+            "- **Key Data Structures**: Min-heap / `heapq` and adjacency list."
+        ),
+        "dynamic programming": (
+            "**Dynamic Programming (DP)** solves complex problems by breaking them down into simpler overlapping subproblems:\n\n"
+            "1. **Optimal Substructure**: Optimal solution contains optimal solutions to subproblems.\n"
+            "2. **Overlapping Subproblems**: Same subproblems are solved repeatedly.\n"
+            "- **Approaches**:\n"
+            "  - **Memoization (Top-Down)**: Recursive with a cache/lookup table.\n"
+            "  - **Tabulation (Bottom-Up)**: Iterative building an array or matrix."
+        ),
+        "rest api": (
+            "**REST (Representational State Transfer)** is an architectural style for networked web services:\n\n"
+            "- **Stateless**: Each request from client to server contains all necessary info to fulfill it.\n"
+            "- **HTTP Verbs**: `GET` (read), `POST` (create), `PUT`/`PATCH` (update), `DELETE` (remove).\n"
+            "- **Standard Status Codes**: `200 OK`, `201 Created`, `400 Bad Request`, `401 Unauthorized`, `404 Not Found`, `500 Internal Error`."
+        ),
+        "jwt": (
+            "**JWT (JSON Web Token)** is a compact URL-safe standard (RFC 7519) for transmitting claims securely:\n\n"
+            "- **Structure**: Three Base64Url parts separated by dots: `Header.Payload.Signature`\n"
+            "- **Verification**: The signature verifies that the sender is authentic and the payload wasn't tampered with.\n"
+            "- Used extensively for stateless authorization and microservice communication."
+        ),
+        "diffusion": (
+            "**Diffusion Models** generate high-fidelity samples (images, audio, 3D) via a two-step process:\n\n"
+            "1. **Forward Process**: Gradually adds Gaussian noise to input data over $T$ timesteps until it becomes pure noise.\n"
+            "2. **Reverse Process**: A neural network (often a U-Net or DiT) learns to iteratively predict and subtract the noise to reconstruct clean outputs."
+        ),
+        "lora": (
+            "**LoRA (Low-Rank Adaptation)** is an efficient parameter-efficient fine-tuning (PEFT) technique for large neural networks:\n\n"
+            "- Instead of retraining billions of frozen weights $W$, LoRA freezes $W$ and trains low-rank decomposition matrices $A$ and $B$ where $\\Delta W = B \\times A$.\n"
+            "- Reduces trainable parameters by up to 99% while achieving performance comparable to full fine-tuning."
+        ),
+        "vector database": (
+            "**Vector Databases** store and index high-dimensional vector embeddings for sub-second semantic similarity search:\n\n"
+            "- **Algorithms**: HNSW (Hierarchical Navigable Small World), IVF (Inverted File), Annoy.\n"
+            "- **Distance Metrics**: Cosine similarity, Dot product, Euclidean distance ($L_2$).\n"
+            "- **Examples**: ChromaDB, Qdrant, Milvus, Pinecone, FAISS."
+        ),
+        "kubernetes": (
+            "**Kubernetes (K8s)** is an open-source container orchestration engine for automated deployment, scaling, and management:\n\n"
+            "- **Control Plane**: API Server, etcd, Controller Manager, Scheduler.\n"
+            "- **Node Components**: Kubelet, Kube-proxy, Container Runtime (containerd).\n"
+            "- **Key Objects**: Pods, Deployments, Services, Ingress, ConfigMaps, PersistentVolumes."
+        ),
+        "asyncio": (
+            "**Asyncio** is Python's standard library module for writing concurrent single-threaded code using the `async`/`await` syntax:\n\n"
+            "- **Event Loop**: Schedules and executes asynchronous tasks and handles I/O events without blocking threads.\n"
+            "- **Coroutines**: Functions defined with `async def` that can pause execution using `await` while waiting for I/O operations (network, files, sockets)."
         )
     }
 
@@ -288,7 +341,39 @@ class SelfAIEngine:
                 "content": ""
             }
 
-        # 6. Conversational Memory & User Name Queries
+        # 6. Host System Diagnostics Tool Routing
+        if any(kw in q for kw in ["system info", "system status", "specs", "disk space", "cpu core", "operating system", "system diagnostic", "host info", "hardware specs"]):
+            q_type = "all"
+            if "disk" in q:
+                q_type = "disk"
+            elif "cpu" in q:
+                q_type = "cpu"
+            elif "os" in q or "operating system" in q:
+                q_type = "os"
+            return {
+                "thought": f"User requested system diagnostics ('{q_type}'). Routing to system_info tool.",
+                "tool_calls": [{"name": "system_info", "args": {"query_type": q_type}}],
+                "content": ""
+            }
+
+        # 7. Real-Time Weather Tool Routing
+        weather_match = re.search(r"\b(?:weather|temperature|forecast|climate)\s+(?:in|for|of|at)\s+([A-Za-z\s,\.-]+)", q)
+        if not weather_match:
+            weather_match = re.search(r"([A-Za-z\s]+)\s+(?:weather|forecast)", q)
+        if (weather_match or "weather" in q) and not any(kw in q for kw in ["api", "code", "function", "create", "whether"]):
+            loc = "London"
+            if weather_match:
+                loc = weather_match.group(1).strip("? .")
+                loc = re.sub(r"\b(current|today|live|right now|the|is|like|what)\b", "", loc).strip()
+            if not loc:
+                loc = "London"
+            return {
+                "thought": f"Detected real-time weather query for '{loc}'. Routing to weather_info tool.",
+                "tool_calls": [{"name": "weather_info", "args": {"location": loc}}],
+                "content": ""
+            }
+
+        # 8. Conversational Memory & User Name Queries
         if any(kw in q for kw in ["what is my name", "who am i", "do you remember me", "remember my name"]):
             if user_name:
                 return {
@@ -303,7 +388,7 @@ class SelfAIEngine:
                     "content": "You haven't told me your name yet! What should I call you?"
                 }
 
-        # 7. Greetings, Persona & Identity
+        # 9. Greetings, Persona & Identity
         greeting_words = ["hi", "hello", "hey", "hola", "namaste", "kaise ho", "good morning", "good evening", "greetings"]
         if any(q.startswith(g) or q == g for g in greeting_words):
             name_part = f", **{user_name}**" if user_name else ""
@@ -316,8 +401,11 @@ class SelfAIEngine:
                     f"**Here is what I can do for you right now:**\n"
                     f"- 🧮 **Math & Science**: *\"Calculate sqrt(256) + 42 * 3\"*\n"
                     f"- 🐍 **Run Python Code**: *\"Run python code to test prime numbers\"*\n"
-                    f"- 💻 **Coding & Algorithms**: Ask me for Binary Search, QuickSort, React hooks, SQL, etc.\n"
-                    f"- 📚 **Knowledge & Explainers**: Ask me about Quantum Computing, RAG, Transformers, Docker.\n"
+                    f"- 🖥️ **System Diagnostics**: *\"Check system status and disk space\"*\n"
+                    f"- 🌤️ **Live Global Weather**: *\"What is the weather in Tokyo?\"*\n"
+                    f"- 🌐 **Web Search**: *\"Search web for quantum computing advancements\"*\n"
+                    f"- 💻 **Coding & Algorithms**: Ask me for Dijkstra, QuickSort, React hooks, SQL, etc.\n"
+                    f"- 📚 **Knowledge & Explainers**: Ask me about LoRA, RAG, Transformers, Docker.\n"
                     f"- 📁 **File & Document RAG**: Drop documents in the chat or ask me to inspect workspace files.\n\n"
                     f"How can I assist you today?"
                 )

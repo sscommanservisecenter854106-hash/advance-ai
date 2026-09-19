@@ -10,17 +10,18 @@ Nexus-AI is a full-stack, modular, multimodal AI agent and assistant platform de
    - Live multi-step reasoning (`Reason -> Act -> Observe -> Finish`).
    - Collapsible **🧠 Agent Thoughts** accordion showing transparent step-by-step thinking.
 
-2. **Built-in Tool Ecosystem**:
+2. **Built-in Tool Ecosystem (6 Autonomous Tools)**:
    - 🐍 **Python Sandbox (`code_runner`)**: Runs arbitrary Python 3 code in an isolated subprocess with timeout and returns stdout/stderr.
+   - 🖥️ **System Monitor (`system_info`)**: Safely inspects host OS, Python runtime, CPU cores, and real-time disk space.
+   - 🌤️ **Live Global Weather (`weather_info`)**: Queries live temperature, wind speed, humidity, and forecasts worldwide with zero API keys.
    - 🌐 **Live Web Search (`web_search`)**: Queries the live web and scrapes target URLs for real-time information.
    - 📁 **Workspace File Manager (`file_manager`)**: Read, write, append, and list files inside your project directory safely.
    - 🧮 **Scientific Calculator (`calculator`)**: Evaluates mathematical and trigonometric expressions with exact precision.
 
 3. **Nexus Self-AI & Multi-Provider Architecture**:
-   - 🤖 **Nexus Self-AI Engine**: 100% self-hosted, private, and offline out-of-the-box with **zero API keys required**. Features conversational memory, embedded knowledge graph, and autonomous tool routing.
+   - 🤖 **Nexus Self-AI Engine**: 100% self-hosted, private, and offline out-of-the-box with **zero API keys required**. Features conversational memory, embedded knowledge graph across algorithms, web dev, AI/ML, and DevOps, plus autonomous tool routing.
    - 🦙 **Ollama Local LLMs**: Zero-API offline neural generation (Llama 3, Phi-3, DeepSeek, Mistral) running directly on your hardware.
    - 🌐 **Cloud Providers (Optional)**: Optional connectors for Google Gemini, OpenAI, or Groq if desired.
-
 
 4. **Hybrid Memory & RAG Knowledge Base**:
    - Persistent SQLite conversation history across multiple chat sessions.
@@ -30,9 +31,16 @@ Nexus-AI is a full-stack, modular, multimodal AI agent and assistant platform de
 5. **Futuristic Cyber-Glass Web Interface**:
    - Sleek dark theme with neon cyan & purple accents.
    - Real-time token streaming via WebSockets.
+   - 📋 **Interactive Code Blocks**: Syntax headers with 1-click clipboard copy buttons.
+   - 📦 **Conversation Export**: Download active conversations as Markdown (`.md`) or structured JSON (`.json`).
+   - 🗑️ **Conversation Reset**: 1-click clean canvas reset with confirmation.
    - 🎙️ Voice Input (Web Speech API speech-to-text).
    - 🔊 Audio Output (Speech synthesis TTS).
    - In-app **⚙️ Settings modal** to customize system prompts, temperature, and switch providers.
+
+6. **Production & Multi-Cloud Deployment**:
+   - Pre-configured for **Render.com** (`render.yaml`), **Docker Compose** (`docker-compose.yml`), **Railway/Heroku** (`Procfile`), and self-hosted VPS (Nginx + Systemd).
+   - See [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions.
 
 ---
 

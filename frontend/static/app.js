@@ -45,6 +45,11 @@ class NexusApp {
     this.ragSourcesList = document.getElementById('rag-sources-list');
     this.clearRagBtn = document.getElementById('clear-rag-btn');
 
+    // Header Actions
+    this.exportChatBtn = document.getElementById('export-chat-btn');
+    this.exportDropdown = document.getElementById('export-dropdown');
+    this.clearChatBtn = document.getElementById('clear-chat-btn');
+
     // Status Badges
     this.activeModelBadge = document.getElementById('active-model-badge');
     this.ragCountBadge = document.getElementById('rag-count-badge');
@@ -377,6 +382,23 @@ class NexusApp {
       this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
     }
 
+    // Export & Clear Conversation
+    if (this.exportChatBtn && this.exportDropdown) {
+      this.exportChatBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.exportDropdown.classList.toggle('show');
+      });
+      document.addEventListener('click', (e) => {
+        if (!this.exportChatBtn.contains(e.target) && !this.exportDropdown.contains(e.target)) {
+          this.exportDropdown.classList.remove('show');
+        }
+      });
+    }
+
+    if (this.clearChatBtn) {
+      this.clearChatBtn.addEventListener('click', () => this.clearCurrentConversation());
+    }
+
     // Modal Triggers
     if (this.settingsBtn) {
       this.settingsBtn.addEventListener('click', () => this.openSettings());
@@ -538,15 +560,23 @@ class NexusApp {
           </svg>
         </div>
         <h1>Nexus-AI Autonomous Platform</h1>
-        <p>Your self-contained multimodal AI assistant with live reasoning, Python code execution, web search, calculator, and document knowledge memory.</p>
+        <p>Your self-contained multimodal AI platform with live ReAct reasoning, Python sandbox, system diagnostics, live weather, web search, calculator, and document knowledge memory.</p>
         <div class="suggestion-grid">
-          <div class="suggestion-chip" onclick="app.sendPreset('Compute sqrt(144) + 2**8')">
-            <strong>🧮 Fast Math Calculation</strong>
-            <span>Compute sqrt(144) + 2**8</span>
+          <div class="suggestion-chip" onclick="app.sendPreset('Check current system status, CPU specs, and available disk space')">
+            <strong>🖥️ System Diagnostics</strong>
+            <span>Check CPU, OS & disk space</span>
+          </div>
+          <div class="suggestion-chip" onclick="app.sendPreset('What is the live weather in Tokyo right now?')">
+            <strong>🌤️ Global Weather</strong>
+            <span>Check live temperature & forecast</span>
           </div>
           <div class="suggestion-chip" onclick="app.sendPreset('Run python code to find the first 15 Fibonacci numbers')">
             <strong>🐍 Python Sandbox</strong>
-            <span>Generate first 15 Fibonacci numbers</span>
+            <span>Execute Python dynamically</span>
+          </div>
+          <div class="suggestion-chip" onclick="app.sendPreset('Compute sqrt(144) + 2**8 * 3')">
+            <strong>🧮 Fast Math Calculation</strong>
+            <span>Evaluate scientific expressions</span>
           </div>
           <div class="suggestion-chip" onclick="app.sendPreset('List the files and directories in the workspace')">
             <strong>📁 Inspect Workspace</strong>
@@ -554,7 +584,7 @@ class NexusApp {
           </div>
           <div class="suggestion-chip" onclick="app.sendPreset('Search web for latest advancements in quantum computing')">
             <strong>🌐 Web Search</strong>
-            <span>Look up latest news & tech</span>
+            <span>Look up live news & tech</span>
           </div>
         </div>
       </div>
@@ -909,18 +939,118 @@ class NexusApp {
       .replace(/'/g, '&#039;');
   }
 
+  copyCode(btn) {
+    const wrapper = btn.closest('.code-block-wrapper');
+    if (!wrapper) return;
+    const codeEl = wrapper.querySelector('pre code');
+    if (!codeEl) return;
+    const text = codeEl.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'Copied! ✅';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('copied');
+      }, 2000);
+    }).catch((err) => {
+      console.warn('Clipboard copy failed:', err);
+    });
+  }
+
+  async exportConversation(format) {
+    if (this.exportDropdown) {
+      this.exportDropdown.classList.remove('show');
+    }
+    if (!this.sessionId) {
+      alert('No active conversation to export.');
+      return;
+    }
+
+    try {
+      const res = await this.authFetch(`/api/sessions/${this.sessionId}`);
+      const data = await res.json();
+      const messages = data.messages || [];
+
+      if (messages.length === 0) {
+        alert('Conversation is empty.');
+        return;
+      }
+
+      let blob;
+      let filename;
+      const dateStr = new Date().toISOString().slice(0, 10);
+
+      if (format === 'json') {
+        const jsonStr = JSON.stringify({
+          session_id: this.sessionId,
+          exported_at: new Date().toISOString(),
+          messages: messages
+        }, null, 2);
+        blob = new Blob([jsonStr], { type: 'application/json' });
+        filename = `nexus_chat_${dateStr}.json`;
+      } else {
+        let md = `# Nexus-AI Conversation Export\n\n`;
+        md += `*Exported on: ${new Date().toLocaleString()}*\n\n---\n\n`;
+        messages.forEach((m) => {
+          const author = m.role === 'user' ? '👤 User' : '🤖 Nexus-AI';
+          md += `### ${author}\n\n`;
+          if (m.thoughts) {
+            md += `> **Agent Thoughts**:\n> ${m.thoughts.replace(/\n/g, '\n> ')}\n\n`;
+          }
+          md += `${m.content}\n\n---\n\n`;
+        });
+        blob = new Blob([md], { type: 'text/markdown' });
+        filename = `nexus_chat_${dateStr}.md`;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Failed to export conversation: ' + e.message);
+    }
+  }
+
+  async clearCurrentConversation() {
+    if (!confirm('Are you sure you want to clear this conversation?')) return;
+    this.chatMessages.innerHTML = '';
+    this.showWelcomeHero();
+    if (this.sessionId) {
+      await this.deleteSession(this.sessionId);
+    }
+    await this.startNewSession();
+  }
+
   renderMarkdown(text) {
     if (!text) return '';
     let html = text;
 
-    // Code blocks with syntax copy button
+    // Code blocks with syntax copy button and language header
     html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+      const safeLang = (lang || 'code').toLowerCase();
       const safeCode = this.escapeHtml(code.trim());
-      return `<pre><code class="language-${lang}">${safeCode}</code></pre>`;
+      return `
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">${safeLang}</span>
+            <button type="button" class="copy-code-btn" onclick="app.copyCode(this)">📋 Copy</button>
+          </div>
+          <pre><code class="language-${safeLang}">${safeCode}</code></pre>
+        </div>
+      `;
     });
 
     // Inline code
     html = html.replace(/`([^`]+)`/g, (m, c) => `<code>${this.escapeHtml(c)}</code>`);
+
+    // Markdown Links
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
     // Headers
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
